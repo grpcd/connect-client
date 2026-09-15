@@ -23,8 +23,8 @@ go get github.com/grpcd/connect-client
 
 - **`client/`** - Client SDK for method registration, and the connection every
   call to grpcd goes over
-- **`discover/`** - Transport that keeps a Connect client pointed at a
-  discovered upstream
+- **`discover/`** - Transport that routes `grpcd:///` URLs to the replica
+  discovered for the procedure they name
 
 The endpoints a service exposes and the method list it advertises come from
 [connect-service](https://github.com/pbrpc/connect-service); this library takes
@@ -66,25 +66,33 @@ that and returns rather than holding a stream that claims otherwise.
 
 ### Reaching an Upstream
 
-A service that depends on another grpcd-registered service holds one Connect
-client to it for the life of the process. The `discover` package supplies the
-transport under that client: it asks grpcd for the method, probes each
-candidate from the service's own network position, reports the ones it cannot
-reach, and sends every request to the one it can. When the replica stops
-answering at the transport, the next request rediscovers, and one whose body
-can be sent again is sent to the new replica without the caller seeing the
-change. The application holds a plain client and never sees an address.
+A service that depends on grpcd-registered methods addresses them by the
+`grpcd:///` scheme: `grpcd:///package.Service/Method` names a method as it was
+registered, with no authority, and nothing in it is ever dialed as written.
+The `discover` package supplies the transport that gives the scheme its
+meaning. `discover.New` is built once per process on the same grpcd client the
+registration uses, and goes under the one HTTP client every dependency's
+Connect client is built on, each against `discover.BaseURL`:
 
-`discover.New` is built once per process on the same grpcd client the
-registration uses. Each upstream is one `Upstream`, named by one of its methods
-(a replica registers every method of its service, so one stands for the whole).
-Its `HTTPClient()` and `BaseURL()` go to `foundationclient.New` like any other
-client and URL. Discovery runs on the first request, and a request that finds
-nothing fails; the next one asks again.
+```go
+discovery := discover.New(serveCtx, log, grpcdService, discover.NewProbe(nil), nil)
+httpClient := foundationclient.NewHTTPClient(discovery)
+upstream := upstreamconnect.NewUpstreamServiceClient(foundationclient.New(httpClient, discover.BaseURL, nil))
+```
 
-The upstream also holds a `Watch` naming the address it took. When a replica of
-the upstream registers later, grpcd tells a share of the holders to move to it;
-the upstream probes the new address, opens a `Watch` naming it, and sends the
+A request to a `grpcd:///` URL is routed by the procedure in its path. The
+first request for a procedure asks grpcd for it, probes each candidate from
+the service's own network position, reports the ones it cannot reach, and
+holds the one it can; every request for that procedure then goes there. When
+the replica stops answering at the transport, the next request rediscovers,
+and one whose body can be sent again is sent to the new replica without the
+caller seeing the change. A request to any other URL goes over the standard
+transport untouched, so the same client reaches a fixed `http://host:port`
+too. The application holds plain clients and never sees an address.
+
+Each procedure holds a `Watch` naming the address it took. When a replica of
+the service registers later, grpcd tells a share of the holders to move to it;
+the procedure probes the new address, opens a `Watch` naming it, and sends the
 requests that follow there. A new replica takes its share of existing clients
 that way, and a move that cannot be reached is a no-op.
 
@@ -93,9 +101,12 @@ that way, and a move that cannot be reached is a no-op.
 Both are dependencies the service's diagnostics should report. grpcd goes in
 under `client.CheckName` as the registration's own `Check`: while the stream is
 held, grpcd accepted this service's registration and the connection is alive,
-which is more than a health call could say. The upstream goes in through
-`diagnostics.NewUpstreamCheck` with the upstream's `HTTPClient()`, which
-probes and reports the replica the client is on.
+which is more than a health call could say. A process that discovers without
+registering reports grpcd from `discovery.Check(address)` instead, which is
+reachable while any procedure holds a replica. An upstream goes in through
+`diagnostics.NewUpstreamCheck` with the HTTP client above and
+`discovery.Upstream(method)`, which probes and reports the replica that method
+is on.
 
 ## Configuration
 

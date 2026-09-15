@@ -4,26 +4,19 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
-
-	foundationclient "github.com/pbrpc/connect-foundation/client"
 )
 
-// Upstream is one dependency reached through grpcd.
+// Upstream is one method reached through grpcd.
 //
-// It is the transport under its own HTTP client: every request bound for the
-// dependency passes through RoundTrip, which sends it to the replica held
-// right now, discovering one first when none is. The Connect client built on
-// HTTPClient and BaseURL never sees an address; the replica it is on can change
-// under it and it keeps calling the same URL.
+// Discovery hands it every request whose path names its method, and it sends
+// each to the replica held right now, discovering one first when none is. The
+// Connect client the request came from never sees an address; the replica
+// can change under it and it keeps calling the same URL.
 type Upstream struct {
 	discovery *Discovery
 	method    string
 	log       *slog.Logger
-
-	// base carries the request once the replica is chosen.
-	base http.RoundTripper
 
 	// mu guards address and watcher, which change together, and serializes
 	// discovery: the request that finds no address held runs it, and the ones
@@ -31,19 +24,6 @@ type Upstream struct {
 	mu      sync.Mutex
 	address string
 	watcher *watcher
-}
-
-// HTTPClient answers with the client to build the dependency's Connect client
-// on: the foundation's tracing over this upstream's routing.
-func (u *Upstream) HTTPClient() *http.Client {
-	return foundationclient.NewHTTPClient(u)
-}
-
-// BaseURL is the URL to build the Connect client against. Its host is the
-// service name, which RoundTrip replaces with the replica on every request, so
-// it is never dialed as written.
-func (u *Upstream) BaseURL() string {
-	return foundationclient.BaseURL(serviceName(u.method))
 }
 
 // Address reports the replica the upstream is on right now, or "" while none
@@ -96,19 +76,14 @@ func (u *Upstream) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // send carries req to address over the base transport, with body in place of
-// the one it arrived with. The request is cloned so the caller's is untouched.
+// the one it arrived with. The request is cloned so the caller's is untouched:
+// the clone is a cleartext HTTP request to the replica, whatever the caller
+// addressed.
 func (u *Upstream) send(req *http.Request, address string, body io.ReadCloser) (*http.Response, error) {
 	attempt := req.Clone(req.Context())
+	attempt.URL.Scheme = "http"
 	attempt.URL.Host = address
 	attempt.Body = body
 
-	return u.base.RoundTrip(attempt)
-}
-
-// serviceName reports the fully qualified service owning a method named in
-// wire format, "/package.Service/Method".
-func serviceName(method string) string {
-	name, _, _ := strings.Cut(strings.TrimPrefix(method, "/"), "/")
-
-	return name
+	return u.discovery.base.RoundTrip(attempt)
 }

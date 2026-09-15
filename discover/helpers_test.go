@@ -262,19 +262,26 @@ func (s *baseStub) sentTo() []string {
 	return append([]string(nil), s.hosts...)
 }
 
-// newUpstream builds an upstream for method on stub, probing with probe and
-// sending over base, under ctx as the process context.
-func newUpstream(ctx context.Context, stub *grpcdStub, probe Probe, base http.RoundTripper) *Upstream {
-	return New(ctx, slog.New(slog.DiscardHandler), newService(stub), probe).Upstream(method, base)
+// newDiscovery builds a Discovery on stub, probing with probe and sending
+// over base, under ctx as the process context.
+func newDiscovery(ctx context.Context, stub *grpcdStub, probe Probe, base http.RoundTripper) *Discovery {
+	return New(ctx, slog.New(slog.DiscardHandler), newService(stub), probe, base)
 }
 
-// newCall builds a request through u for the service. body nil is a request
-// that cannot be sent twice; any other body can be, the way net/http sets
-// GetBody for one it can rewind.
-func newCall(ctx context.Context, t *testing.T, u *Upstream, body io.Reader) *http.Request {
+// newUpstream builds the upstream for method on stub, probing with probe and
+// sending over base, under ctx as the process context.
+func newUpstream(ctx context.Context, stub *grpcdStub, probe Probe, base http.RoundTripper) *Upstream {
+	return newDiscovery(ctx, stub, probe, base).Upstream(method)
+}
+
+// newCall builds a request for method, addressed the way a Connect client
+// built against BaseURL addresses it. body nil is a request that cannot be
+// sent twice; any other body can be, the way net/http sets GetBody for one it
+// can rewind.
+func newCall(ctx context.Context, t *testing.T, body io.Reader) *http.Request {
 	t.Helper()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, u.BaseURL()+"/", body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL+strings.TrimPrefix(method, "/"), body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,12 +289,20 @@ func newCall(ctx context.Context, t *testing.T, u *Upstream, body io.Reader) *ht
 	return request
 }
 
-// call sends a resendable request through u and answers with the host that
-// answered, read from the body.
-func call(ctx context.Context, t *testing.T, u *Upstream) (string, error) {
+// call sends a resendable request for method through rt and answers with the
+// host that answered, read from the body.
+func call(ctx context.Context, t *testing.T, rt http.RoundTripper) (string, error) {
 	t.Helper()
 
-	response, err := u.RoundTrip(newCall(ctx, t, u, strings.NewReader("request")))
+	return send(t, rt, newCall(ctx, t, strings.NewReader("request")))
+}
+
+// send sends request through rt and answers with the host that answered,
+// read from the body.
+func send(t *testing.T, rt http.RoundTripper, request *http.Request) (string, error) {
+	t.Helper()
+
+	response, err := rt.RoundTrip(request)
 	if err != nil {
 		return "", err
 	}
@@ -393,7 +408,7 @@ func once(stream connect.ClientStream, err error) *transportStub {
 func newStubbedUpstream(ctx context.Context, transport connect.Transport) *Upstream {
 	service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(transport))
 
-	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub()).Upstream(method, newBaseStub())
+	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub(), newBaseStub()).Upstream(method)
 }
 
 // await blocks until signal fires, failing the test if the test's own

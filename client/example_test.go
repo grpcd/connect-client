@@ -13,6 +13,7 @@ import (
 
 	"git.sonicoriginal.software/logger"
 
+	foundationclient "github.com/pbrpc/connect-foundation/client"
 	foundationotel "github.com/pbrpc/connect-foundation/otel"
 	foundation "github.com/pbrpc/connect-foundation/server"
 	"github.com/pbrpc/connect-service/diagnostics"
@@ -97,21 +98,26 @@ func Example() {
 		// the registration, every discovery, every watch.
 		grpcdService = grpcdconnect.NewGRPCDServiceClient(grpcdclient.Connect(grpcdAddress))
 
-		// One Discovery per process, shared by every upstream. The example
-		// service has none; the method below stands in for a generated
-		// procedure constant of a real one.
-		discovery := discover.New(serveCtx, log, grpcdService, discover.NewProbe(nil))
+		// One Discovery per process: the transport under every client to a
+		// discovered dependency. A request to a grpcd:/// URL is routed by
+		// its procedure to the replica held for it, discovered on first use;
+		// any other URL goes over the standard transport as it is.
+		discovery := discover.New(serveCtx, log, grpcdService, discover.NewProbe(nil), nil)
 
-		upstream := discovery.Upstream("/example.UpstreamService/Get", nil)
+		httpClient := foundationclient.NewHTTPClient(discovery)
 
-		// The upstream is the transport under its own client. The generated
-		// client built on it calls the same URL for the life of the process
-		// while the replica behind it changes:
+		// Every generated client is built against the same base URL and calls
+		// the same URL for the life of the process while the replicas behind
+		// it change:
 		//
 		//	upstreamService := upstreamconnect.NewUpstreamServiceClient(
-		//	    foundationclient.New(upstream.HTTPClient(), upstream.BaseURL(), nil),
+		//	    foundationclient.New(httpClient, discover.BaseURL, nil),
 		//	)
-		checks["upstream"] = diagnostics.NewUpstreamCheck(upstream.HTTPClient(), upstream)
+		//
+		// The example service has no upstream; the method below stands in
+		// for a generated procedure constant of a real one. Its upstream is
+		// what diagnostics report the dependency from.
+		checks["upstream"] = diagnostics.NewUpstreamCheck(httpClient, discovery.Upstream("/example.UpstreamService/Get"))
 	}
 
 	healthSrv := health.NewServer()

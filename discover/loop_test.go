@@ -217,7 +217,7 @@ func TestRoundTrip(t *testing.T) {
 		base := newBaseStub(replicaA)
 		u := newUpstream(ctx, stub, probeStub(), base)
 
-		if _, err := u.RoundTrip(newCall(t.Context(), t, u, nil)); !errors.Is(err, errUnreachable) {
+		if _, err := u.RoundTrip(newCall(t.Context(), t, nil)); !errors.Is(err, errUnreachable) {
 			t.Fatalf("error = %v, want %v", err, errUnreachable)
 		}
 		if got := u.Address(); got != "" {
@@ -234,7 +234,7 @@ func TestRoundTrip(t *testing.T) {
 
 		u := newUpstream(ctx, &grpcdStub{scripts: offers(replicaA)}, probeStub(), newBaseStub(replicaA))
 
-		request := newCall(t.Context(), t, u, strings.NewReader("request"))
+		request := newCall(t.Context(), t, strings.NewReader("request"))
 		request.GetBody = func() (io.ReadCloser, error) { return nil, errors.New("gone") }
 
 		if _, err := u.RoundTrip(request); !errors.Is(err, errUnreachable) {
@@ -274,7 +274,7 @@ func TestRoundTrip(t *testing.T) {
 		requestCtx, cancelRequest := context.WithCancel(t.Context())
 		cancelRequest()
 
-		if _, err := u.RoundTrip(newCall(requestCtx, t, u, strings.NewReader("request"))); err == nil {
+		if _, err := u.RoundTrip(newCall(requestCtx, t, strings.NewReader("request"))); err == nil {
 			t.Fatal("expected error")
 		}
 		if got := u.Address(); got != replicaA {
