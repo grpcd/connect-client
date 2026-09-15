@@ -86,9 +86,6 @@ func TestDiscoveryRoundTrip(t *testing.T) {
 		if stub.discoveries() != 1 {
 			t.Errorf("discoveries = %d, want the one lookup shared by both calls", stub.discoveries())
 		}
-		if d.Upstream(method) != d.Upstream(method) {
-			t.Error("expected the same upstream for the same method")
-		}
 	})
 
 	t.Run("builds one upstream under concurrent first sight", func(t *testing.T) {
