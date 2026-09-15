@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.2.0 - 2026-09-15
+#### Features
+- use grpcd:// scheme for discovery - (a23b343) - Nathan Blair
+
+- - -
+
 ## 0.1.0 - 2026-09-15
 #### Features
 - initial release - (9580823) - Nathan Blair
