@@ -11,8 +11,6 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"git.sonicoriginal.software/logger"
-
 	foundationclient "github.com/pbrpc/connect-foundation/client"
 	foundationotel "github.com/pbrpc/connect-foundation/otel"
 	foundation "github.com/pbrpc/connect-foundation/server"
@@ -72,10 +70,8 @@ func Example() {
 		return
 	}
 
-	ctx = logger.ContextWithLogger(ctx, log)
-
-	// New installs an interceptor that puts this logger into every request
-	// context, so it has to be built after the logger is complete.
+	// Init made log the process default, so a handler reaches it with
+	// logger.FromContext(ctx) and its lines carry the request's span.
 	srv := foundation.New(log)
 
 	// Deferred before anything else can fail, so every path out of here stops

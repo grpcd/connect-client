@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"connectrpc.com/connect/v2"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/pbrpc/connect-testing/mocks/roundtripper"
+	"github.com/pbrpc/connect-testing/mocks/tracer"
 )
 
 func TestNew(t *testing.T) {
@@ -114,6 +116,38 @@ func TestDiscoveryRoundTrip(t *testing.T) {
 
 		if _, err := call(t.Context(), t, d); err == nil {
 			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("resolves under the request's trace", func(t *testing.T) {
+		tt, requestCtx := tracer.New(t)
+		defer tt.Shutdown(t)
+
+		d := newDiscovery(t.Context(), &grpcdStub{scripts: offers(replicaA)}, probeStub(), newBaseStub())
+		d.tracer = tt.Tracer(component)
+
+		if _, err := call(requestCtx, t, d); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		tt.EndSpan()
+
+		var request, discover *trace.SpanContext
+
+		for _, span := range tt.GetSpans() {
+			switch span.Name {
+			case "test-span":
+				request = &span.SpanContext
+			case "discover":
+				discover = &span.Parent
+			}
+		}
+
+		if request == nil || discover == nil {
+			t.Fatalf("spans = %v, want the request's and the discovery's", tt.GetSpans())
+		}
+		if discover.SpanID() != request.SpanID() {
+			t.Errorf("discover span's parent = %s, want the request's span %s", discover.SpanID(), request.SpanID())
 		}
 	})
 

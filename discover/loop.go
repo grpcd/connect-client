@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/trace"
+
 	grpcd "github.com/grpcd/protos"
 )
 
@@ -19,8 +21,10 @@ import (
 //
 // The stream runs under the process context, ended early when the caller's
 // ends, so a caller that gave up does not leave a resolution running and a
-// resolution in progress is not tied to the request that started it. Closing
-// the stream is how grpcd is told the candidate worked.
+// resolution in progress is not tied to the request that started it. It runs
+// under the caller's trace, so the lookup and grpcd's side of it are part of
+// the request that needed it. Closing the stream is how grpcd is told the
+// candidate worked.
 func (d *Discovery) resolve(
 	ctx context.Context, method string, wait bool, accept func(ctx context.Context, address string) error,
 ) (string, error) {
@@ -29,6 +33,8 @@ func (d *Discovery) resolve(
 
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
+
+	askCtx = trace.ContextWithSpanContext(askCtx, trace.SpanContextFromContext(ctx))
 
 	askCtx, span := d.tracer.Start(askCtx, "discover")
 	defer span.End()
