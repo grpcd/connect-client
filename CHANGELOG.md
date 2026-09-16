@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.5.1 - 2026-09-16
+#### Bug Fixes
+- forward trace to remaining discover lifetimes - (d9f8a1c) - Nathan Blair
+#### Miscellaneous Chores
+- update connect-testing - (49eb163) - Nathan Blair
+
+- - -
+
 ## 0.5.0 - 2026-09-16
 #### Features
 - use connect-testing and remove grpc-testing - (3a9901d) - Nathan Blair
