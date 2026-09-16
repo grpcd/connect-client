@@ -8,7 +8,8 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	"git.sonicoriginal.software/grpc-testing/mocks/addr"
+	"github.com/pbrpc/connect-testing/mocks/addr"
+	"github.com/pbrpc/connect-testing/mocks/transport"
 
 	"github.com/grpcd/protos/grpcdconnect"
 )
@@ -134,14 +135,14 @@ func TestRegister(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
-		transport := &unopenableTransport{err: errors.New("unavailable"), onOpen: func(int) { cancel() }}
-		service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(transport))
+		unopenable := transport.Unopenable(errors.New("unavailable"), func(int) { cancel() })
+		service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(unopenable))
 
 		New(slog.New(slog.DiscardHandler), serverName, addr.New(listenAddr), []string{method}, service).
 			Register(ctx)
 
-		if transport.opened() != 1 {
-			t.Fatalf("expected one attempt, got %d", transport.opened())
+		if unopenable.Opened() != 1 {
+			t.Fatalf("expected one attempt, got %d", unopenable.Opened())
 		}
 	})
 }

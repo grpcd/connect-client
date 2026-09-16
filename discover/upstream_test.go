@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"connectrpc.com/connect/v2"
+
+	"github.com/pbrpc/connect-testing/mocks/roundtripper"
 )
 
 func TestNew(t *testing.T) {
@@ -51,7 +53,7 @@ func TestDiscoveryRoundTrip(t *testing.T) {
 	t.Run("resolves a grpcd URL and sends the replica a cleartext HTTP request", func(t *testing.T) {
 		var seen *http.Request
 
-		base := roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		base := roundtripper.Func(func(request *http.Request) (*http.Response, error) {
 			seen = request
 
 			return newBaseStub().RoundTrip(request)
@@ -327,11 +329,4 @@ func TestResolve(t *testing.T) {
 			t.Errorf("address = %q, want none", got)
 		}
 	})
-}
-
-// roundTripperFunc adapts a function to http.RoundTripper.
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
-	return f(request)
 }

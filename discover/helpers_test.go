@@ -12,6 +12,9 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connectinprocess"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/pbrpc/connect-testing/mocks/transport"
 
 	grpcd "github.com/grpcd/protos"
 	"github.com/grpcd/protos/grpcdconnect"
@@ -337,97 +340,21 @@ func send(t *testing.T, rt http.RoundTripper, request *http.Request) (string, er
 	return string(body), nil
 }
 
-// streamStub stands in for a Discover stream whose sends fail: the first
-// after failAfter sends. Receive offers candidates in order and then blocks
-// until the stream is closed.
-type streamStub struct {
-	candidates []string
-	failAfter  int
-	sendErr    error
-
-	mu       sync.Mutex
-	sends    int
-	receives int
-	closed   chan struct{}
-}
-
-func newStreamStub(sendErr error, failAfter int, candidates ...string) *streamStub {
-	return &streamStub{candidates: candidates, failAfter: failAfter, sendErr: sendErr, closed: make(chan struct{})}
-}
-
-func (s *streamStub) SendHeaders() error { return nil }
-
-func (s *streamStub) Send(any) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.sends++
-	if s.sends > s.failAfter {
-		return s.sendErr
+// discoverStream builds a Discover stream stub offering candidates in order,
+// whose sends fail with sendErr after failAfter successes.
+func discoverStream(sendErr error, failAfter int, candidates ...string) *transport.Stream {
+	messages := make([]proto.Message, 0, len(candidates))
+	for _, candidate := range candidates {
+		messages = append(messages, &grpcd.DiscoverResponse{Address: candidate})
 	}
 
-	return nil
-}
-
-func (s *streamStub) CloseSend() error { return nil }
-
-func (s *streamStub) Receive(msg any) error {
-	s.mu.Lock()
-	n := s.receives
-	s.receives++
-	s.mu.Unlock()
-
-	if n < len(s.candidates) {
-		msg.(*grpcd.DiscoverResponse).Address = s.candidates[n]
-
-		return nil
-	}
-
-	<-s.closed
-
-	return io.EOF
-}
-
-func (s *streamStub) Close() error {
-	select {
-	case <-s.closed:
-	default:
-		close(s.closed)
-	}
-
-	return nil
-}
-
-// transportStub opens streams through open, which sees each call's ordinal
-// and context, so a test scripts the Discover open and the Watch opens after
-// it separately.
-type transportStub struct {
-	open func(n int, ctx context.Context) (connect.ClientStream, error)
-
-	mu    sync.Mutex
-	calls int
-}
-
-func (t *transportStub) NewClientStream(ctx context.Context, _ connect.Spec) (connect.ClientStream, error) {
-	t.mu.Lock()
-	t.calls++
-	n := t.calls
-	t.mu.Unlock()
-
-	return t.open(n, ctx)
-}
-
-// once answers every open with the same stream, or the same error.
-func once(stream connect.ClientStream, err error) *transportStub {
-	return &transportStub{open: func(int, context.Context) (connect.ClientStream, error) {
-		return stream, err
-	}}
+	return transport.NewStream(sendErr, failAfter, messages...)
 }
 
 // newStubbedUpstream builds an upstream whose grpcd client dispatches over
-// transport rather than a handler, for the failures a handler cannot produce.
-func newStubbedUpstream(ctx context.Context, transport connect.Transport) *Upstream {
-	service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(transport))
+// tp rather than a handler, for the failures a handler cannot produce.
+func newStubbedUpstream(ctx context.Context, tp connect.Transport) *Upstream {
+	service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(tp))
 
 	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub(), newBaseStub()).upstream(method)
 }

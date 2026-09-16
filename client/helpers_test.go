@@ -91,34 +91,3 @@ func newServer(stub *grpcdStub) *connect.Server {
 
 	return rpc
 }
-
-// unopenableTransport stands in for a transport that cannot reach grpcd at
-// all: every stream fails to open. onOpen runs on each attempt with its
-// ordinal, so a test can end the client's loop.
-type unopenableTransport struct {
-	err    error
-	onOpen func(n int)
-
-	mu       sync.Mutex
-	attempts int
-}
-
-func (u *unopenableTransport) NewClientStream(context.Context, connect.Spec) (connect.ClientStream, error) {
-	u.mu.Lock()
-	u.attempts++
-	n := u.attempts
-	u.mu.Unlock()
-
-	if u.onOpen != nil {
-		u.onOpen(n)
-	}
-
-	return nil, u.err
-}
-
-func (u *unopenableTransport) opened() int {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
-	return u.attempts
-}

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"connectrpc.com/connect/v2"
+
+	"github.com/pbrpc/connect-testing/mocks/transport"
 )
 
 const (
@@ -113,7 +115,7 @@ func TestRoundTrip(t *testing.T) {
 	})
 
 	t.Run("fails the request when the stream cannot be opened at all", func(t *testing.T) {
-		u := newStubbedUpstream(t.Context(), once(nil, errors.New("unavailable")))
+		u := newStubbedUpstream(t.Context(), transport.Once(nil, errors.New("unavailable")))
 
 		if _, err := call(t.Context(), t, u); err == nil {
 			t.Fatal("expected error")
@@ -121,7 +123,7 @@ func TestRoundTrip(t *testing.T) {
 	})
 
 	t.Run("fails the request when the method cannot be sent", func(t *testing.T) {
-		u := newStubbedUpstream(t.Context(), once(newStreamStub(errors.New("broken"), 0), nil))
+		u := newStubbedUpstream(t.Context(), transport.Once(discoverStream(errors.New("broken"), 0), nil))
 
 		if _, err := call(t.Context(), t, u); err == nil {
 			t.Fatal("expected error")
@@ -129,7 +131,7 @@ func TestRoundTrip(t *testing.T) {
 	})
 
 	t.Run("fails the request when a dead report cannot be sent", func(t *testing.T) {
-		u := newStubbedUpstream(t.Context(), once(newStreamStub(errors.New("broken"), 1, replicaA), nil))
+		u := newStubbedUpstream(t.Context(), transport.Once(discoverStream(errors.New("broken"), 1, replicaA), nil))
 		u.discovery.probe = probeStub(replicaA)
 
 		if _, err := call(t.Context(), t, u); err == nil {
@@ -143,17 +145,17 @@ func TestRoundTrip(t *testing.T) {
 
 		// Discovery offers a candidate; the Watch on it never opens, and the
 		// request ends while it is being waited for.
-		transport := &transportStub{open: func(n int, ctx context.Context) (connect.ClientStream, error) {
+		tp := transport.New(func(n int, ctx context.Context, _ connect.Spec) (connect.ClientStream, error) {
 			if n == 1 {
-				return newStreamStub(nil, 0, replicaA), nil
+				return discoverStream(nil, 0, replicaA), nil
 			}
 
 			cancel()
 			<-ctx.Done()
 
 			return nil, ctx.Err()
-		}}
-		u := newStubbedUpstream(t.Context(), transport)
+		})
+		u := newStubbedUpstream(t.Context(), tp)
 
 		if _, err := call(requestCtx, t, u); !errors.Is(err, context.Canceled) {
 			t.Fatalf("error = %v, want the cancellation", err)
