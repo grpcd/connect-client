@@ -9,7 +9,7 @@ require (
 	github.com/pbrpc/connect-foundation v0.4.0
 	github.com/pbrpc/connect-protos v0.2.1
 	github.com/pbrpc/connect-service v0.1.1
-	github.com/pbrpc/connect-testing v0.3.0
+	github.com/pbrpc/connect-testing v0.3.1
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 	google.golang.org/protobuf v1.36.12

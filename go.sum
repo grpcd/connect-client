@@ -33,6 +33,8 @@ github.com/pbrpc/connect-service v0.1.1 h1:cfdELd0JfLwDJPGUcy956dBthEWy10zwzFpQ5
 github.com/pbrpc/connect-service v0.1.1/go.mod h1:W6Orcwv6ZpmCu4ehR26l3jTqffgKl2njpKUyhJ0XRAM=
 github.com/pbrpc/connect-testing v0.3.0 h1:lYS7UU9gL2AjXfj2LIpnJMYjG5wbZOawSFuMN4WIQlY=
 github.com/pbrpc/connect-testing v0.3.0/go.mod h1:bujCENzxoogpSgKh//RLG0f5nWTQpiT4GrheaFYJ340=
+github.com/pbrpc/connect-testing v0.3.1 h1:Arb+P3iH+Qp49AcAoG0OZIYokPyZzNtS/of+h+GwZJA=
+github.com/pbrpc/connect-testing v0.3.1/go.mod h1:bujCENzxoogpSgKh//RLG0f5nWTQpiT4GrheaFYJ340=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
