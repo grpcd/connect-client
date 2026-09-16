@@ -6,7 +6,7 @@ require (
 	connectrpc.com/connect/v2 v2.0.0-alpha.1
 	git.sonicoriginal.software/grpc-testing v0.2.0
 	git.sonicoriginal.software/logger v0.1.0
-	github.com/grpcd/protos v0.8.0
+	github.com/grpcd/protos v0.9.1
 	github.com/pbrpc/connect-foundation v0.2.1
 	github.com/pbrpc/connect-protos v0.2.1
 	github.com/pbrpc/connect-service v0.0.3

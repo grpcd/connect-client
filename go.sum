@@ -29,6 +29,10 @@ github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 h1:/Tnpcb2E0Pz/tN9s3bfEY2Q8ePC
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0/go.mod h1:zOBXOsUaBSjKgmH4OGzV1esUpR3oUSCPYVd2cUBjKYY=
 github.com/grpcd/protos v0.8.0 h1:xrVJJ6qd7xMmwKveX2gt6Uva0N4ExjVWu93hB1bDITw=
 github.com/grpcd/protos v0.8.0/go.mod h1:GmPnBRgzqLT5ijAR4cLfO3ZCmvyA8Veh9jwQPzkqjyo=
+github.com/grpcd/protos v0.9.0 h1:4V1zZdAecHbH81BTlk4RuX4/lZQ5Seg3RmQ7+BgWR/4=
+github.com/grpcd/protos v0.9.0/go.mod h1:GmPnBRgzqLT5ijAR4cLfO3ZCmvyA8Veh9jwQPzkqjyo=
+github.com/grpcd/protos v0.9.1 h1:Jq7ug8LkQDfG/hH53f1T9leveHmCIMusThiwedKiaZY=
+github.com/grpcd/protos v0.9.1/go.mod h1:Dr3p0kRqUMmH4XujtDMQj4ZjrJvQTK1Q1GLqav3oAAU=
 github.com/pbrpc/connect-foundation v0.1.2 h1:VtZZnquKQGh4DDuia+OCvL2Fl2Eg3Ad3RruBx1XDV4k=
 github.com/pbrpc/connect-foundation v0.1.2/go.mod h1:2/YYLyUrfy4vMBMXZDePanN832xwFhXQV69uIrWAWo8=
 github.com/pbrpc/connect-foundation v0.2.1 h1:L9ucXkIjPvgtMcETEp4DP4rfYeOoBRsE5GNsQZxYBTY=
