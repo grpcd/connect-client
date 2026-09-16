@@ -116,8 +116,12 @@ a process that wants a method's `Discover` and `Watch` open from startup.
 ### Reporting Dependencies
 
 Both are dependencies the service's diagnostics should report. grpcd goes in
-under `client.CheckName` as `client.Check(conn)`, which asks grpcd's own health
-procedure over the same connection everything else uses. An upstream goes in
+under `client.CheckName` as `client.Check(conn)`, which probes grpcd's
+`GET /healthz` at the address the connection was built for, over the
+connection's own HTTP client: the same connection everything else uses, so on
+an L4 balancer the probe rides the connection the streams are held on. The
+report is `REACHABLE` with what grpcd says of itself when the probe is
+answered, `UNREACHABLE` with `UNKNOWN` when it is not. An upstream goes in
 through `diagnostics.NewUpstreamCheck` with the HTTP client above and
 `discovery.Upstream(url)`, which probes and reports the replica that method is
 on.

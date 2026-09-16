@@ -24,5 +24,8 @@ func TestConnect(t *testing.T) {
 		if conn.GRPCDServiceClient == nil || conn.client == nil {
 			t.Error("expected the generated client and the one it is built on")
 		}
+		if conn.httpClient == nil {
+			t.Error("expected the HTTP client the probe goes over")
+		}
 	})
 }

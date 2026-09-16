@@ -15,10 +15,11 @@ import (
 type Probe func(ctx context.Context, address string) error
 
 // NewProbe answers with the Probe production uses: the health probe every
-// Connect service serves, asked over httpClient. An answer with any status is
-// the candidate reachable; only not being answered fails it. nil means the
-// foundation's standard HTTP client, which is how a test substitutes one that
-// dials nothing.
+// Connect service serves, asked over httpClient. A candidate passes when it
+// answers that probe with a status, serving or not; one that cannot be
+// reached, or answers with anything else, fails. nil means the foundation's
+// standard HTTP client, which is how a test substitutes one that dials
+// nothing.
 func NewProbe(httpClient connecthttp.HTTPClient) Probe {
 	if httpClient == nil {
 		httpClient = foundationclient.NewHTTPClient(nil)

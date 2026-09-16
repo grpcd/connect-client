@@ -450,8 +450,10 @@ func TestFollow(t *testing.T) {
 
 		await(t, stub.watchEnded, "the watch never ended")
 
-		if _, open := <-w.moves; open {
-			t.Fatal("expected the moves to be closed")
+		// The held move may still be delivered to a reader that turns up
+		// before the stop is seen; either way the channel closes, which is
+		// what a follower needs to return.
+		for range w.moves {
 		}
 	})
 
