@@ -1,77 +1,55 @@
 package client
 
 import (
-	"context"
 	"errors"
 	"testing"
 
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectinprocess"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/pbrpc/connect-service/diagnostics"
-	"github.com/pbrpc/connect-service/health"
 )
 
 func TestCheck(t *testing.T) {
-	t.Run("reports grpcd unreachable while the stream is not held", func(t *testing.T) {
-		client := newClient(&grpcdStub{}, []string{method})
+	t.Run("reports what grpcd says of itself", func(t *testing.T) {
+		rpc := newServer(&grpcdStub{})
+		rpc.Register(healthMethod(grpc_health_v1.HealthCheckResponse_SERVING))
 
-		got, err := client.Check(t.Context())
-		if !errors.Is(err, ErrNotRegistered) {
-			t.Fatalf("error = %v, want %v", err, ErrNotRegistered)
-		}
-		if got.Address != grpcdAddress {
-			t.Errorf("address = %q, want %q", got.Address, grpcdAddress)
-		}
-		if got.State != diagnostics.StateUnreachable {
-			t.Errorf("state = %q, want %q", got.State, diagnostics.StateUnreachable)
-		}
-		if want := string(health.StatusUnknown); got.Serving != want {
-			t.Errorf("serving = %q, want %q", got.Serving, want)
-		}
-		if got.LastChecked == 0 {
-			t.Error("last checked was not recorded")
-		}
-		if got.Details == nil {
-			t.Error("details map is nil")
-		}
-	})
+		conn := newConnection(connect.NewClient(connectinprocess.New(rpc)), grpcdAddress)
 
-	t.Run("reports grpcd serving while the stream is held", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-
-		client := newClient(&grpcdStub{}, []string{method})
-
-		held := make(chan bool, 2)
-		client.onHeld = func(h bool) { held <- h }
-
-		done := make(chan struct{})
-		go func() {
-			client.Register(ctx)
-			close(done)
-		}()
-
-		select {
-		case <-held:
-		case <-t.Context().Done():
-			t.Fatal("the stream was never held")
-		}
-
-		got, err := client.Check(t.Context())
+		got, err := Check(conn)(t.Context())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.State != diagnostics.StateReachable {
-			t.Errorf("state = %q, want %q", got.State, diagnostics.StateReachable)
+		if got.GetAddress() != grpcdAddress {
+			t.Errorf("address = %q, want %q", got.GetAddress(), grpcdAddress)
 		}
-		if want := string(health.StatusServing); got.Serving != want {
-			t.Errorf("serving = %q, want %q", got.Serving, want)
+		if got.GetState() != diagnostics.StateReachable {
+			t.Errorf("state = %q, want reachable", got.GetState())
 		}
+		if got.GetServing() != grpc_health_v1.HealthCheckResponse_SERVING.String() {
+			t.Errorf("serving = %q, want SERVING", got.GetServing())
+		}
+		if got.GetLastChecked() == 0 {
+			t.Error("expected a last checked time")
+		}
+	})
 
-		// Ending the registration clears it.
-		cancel()
-		<-done
+	t.Run("reports grpcd unreachable when the call is not answered", func(t *testing.T) {
+		transport := &unopenableTransport{err: errors.New("unavailable")}
 
-		if _, err := client.Check(t.Context()); !errors.Is(err, ErrNotRegistered) {
-			t.Fatalf("error = %v, want %v after the stream ended", err, ErrNotRegistered)
+		conn := newConnection(connect.NewClient(transport), grpcdAddress)
+
+		got, err := Check(conn)(t.Context())
+		if err == nil {
+			t.Fatal("expected the failure to be reported")
+		}
+		if got.GetState() != diagnostics.StateUnreachable {
+			t.Errorf("state = %q, want unreachable", got.GetState())
+		}
+		if got.GetServing() != grpc_health_v1.HealthCheckResponse_UNKNOWN.String() {
+			t.Errorf("serving = %q, want UNKNOWN", got.GetServing())
 		}
 	})
 }

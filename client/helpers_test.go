@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connectinprocess"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	grpcd "github.com/grpcd/protos"
 	"github.com/grpcd/protos/grpcdconnect"
@@ -80,10 +81,32 @@ func (s *grpcdStub) request(n int) *grpcd.RegisterRequest {
 // registration in these tests goes through the generated handler and nothing
 // listens.
 func newService(stub *grpcdStub) grpcdconnect.GRPCDServiceClient {
+	return newConnection(connect.NewClient(connectinprocess.New(newServer(stub))), grpcdAddress)
+}
+
+// newServer registers stub on a dispatcher, which a test adds other methods
+// to before building the connection.
+func newServer(stub *grpcdStub) *connect.Server {
 	rpc := connect.NewServer()
 	grpcdconnect.RegisterGRPCDServiceHandler(rpc, stub)
 
-	return grpcdconnect.NewGRPCDServiceClient(connect.NewClient(connectinprocess.New(rpc)))
+	return rpc
+}
+
+// healthMethod answers grpcd's health procedure with status, the way grpc-go's
+// health server does on grpcd.
+func healthMethod(status grpc_health_v1.HealthCheckResponse_ServingStatus) connect.Method {
+	return connect.Method{
+		Spec: healthSpec,
+		Handler: func(_ context.Context, _ connect.Spec, stream connect.ServerStream) error {
+			var request grpc_health_v1.HealthCheckRequest
+			if err := stream.Receive(&request); err != nil {
+				return err
+			}
+
+			return stream.Send(&grpc_health_v1.HealthCheckResponse{Status: status})
+		},
+	}
 }
 
 // unopenableTransport stands in for a transport that cannot reach grpcd at

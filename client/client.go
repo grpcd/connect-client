@@ -4,7 +4,6 @@ package client
 import (
 	"log/slog"
 	"net"
-	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -26,21 +25,12 @@ const (
 
 // Client holds this server's registration with grpcd.
 type Client struct {
-	tracer       trace.Tracer
-	log          *slog.Logger
-	service      grpcdconnect.GRPCDServiceClient
-	grpcdAddress string
-	serverName   string
-	methods      []string
-	addr         net.Addr
-
-	// held is whether the registration stream is open: the registration
-	// goroutine writes it and every diagnostics request reads it.
-	held atomic.Bool
-
-	// onHeld runs on every change of held, with the new value. Nil in
-	// production; a test substitutes one to know when the stream is held.
-	onHeld func(held bool)
+	tracer     trace.Tracer
+	log        *slog.Logger
+	service    grpcdconnect.GRPCDServiceClient
+	serverName string
+	methods    []string
+	addr       net.Addr
 }
 
 // New returns a new grpcd client.
@@ -53,17 +43,14 @@ type Client struct {
 // half comes from here — read from the listener rather than from configuration,
 // so a bind to :0 reports what it actually received.
 //
-// service is the grpcd client the caller built, on the connection Connect
-// answers with. Taking it rather than an address is what lets a test supply a
-// fake. grpcdAddress is what that connection was built for, which is what the
-// diagnostics check reports.
+// conn is the connection Connect answered with, or in a test any generated
+// grpcd client.
 func New(
 	log *slog.Logger,
 	serverName string,
 	addr net.Addr,
 	methods []string,
-	service grpcdconnect.GRPCDServiceClient,
-	grpcdAddress string,
+	conn grpcdconnect.GRPCDServiceClient,
 ) *Client {
 	if log == nil {
 		log = logger.NewNullLogger()
@@ -72,21 +59,11 @@ func New(
 	log = log.With(slog.String("component", component))
 
 	return &Client{
-		log:          log,
-		tracer:       otel.Tracer(component),
-		service:      service,
-		grpcdAddress: grpcdAddress,
-		serverName:   serverName,
-		methods:      methods,
-		addr:         addr,
-	}
-}
-
-// setHeld records whether the registration stream is open.
-func (c *Client) setHeld(held bool) {
-	c.held.Store(held)
-
-	if c.onHeld != nil {
-		c.onHeld(held)
+		log:        log,
+		tracer:     otel.Tracer(component),
+		service:    conn,
+		serverName: serverName,
+		methods:    methods,
+		addr:       addr,
 	}
 }

@@ -271,7 +271,7 @@ func newDiscovery(ctx context.Context, stub *grpcdStub, probe Probe, base http.R
 // newUpstream builds the upstream for method on stub, probing with probe and
 // sending over base, under ctx as the process context.
 func newUpstream(ctx context.Context, stub *grpcdStub, probe Probe, base http.RoundTripper) *Upstream {
-	return newDiscovery(ctx, stub, probe, base).Upstream(method)
+	return newDiscovery(ctx, stub, probe, base).upstream(method)
 }
 
 // newCall builds a request for method, addressed the way a Connect client
@@ -281,7 +281,7 @@ func newUpstream(ctx context.Context, stub *grpcdStub, probe Probe, base http.Ro
 func newCall(ctx context.Context, t *testing.T, body io.Reader) *http.Request {
 	t.Helper()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL+strings.TrimPrefix(method, "/"), body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, URL(method), body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -408,7 +408,7 @@ func once(stream connect.ClientStream, err error) *transportStub {
 func newStubbedUpstream(ctx context.Context, transport connect.Transport) *Upstream {
 	service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(transport))
 
-	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub(), newBaseStub()).Upstream(method)
+	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub(), newBaseStub()).upstream(method)
 }
 
 // await blocks until signal fires, failing the test if the test's own

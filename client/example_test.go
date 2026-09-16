@@ -22,7 +22,6 @@ import (
 
 	grpcdclient "github.com/grpcd/connect-client/client"
 	"github.com/grpcd/connect-client/discover"
-	"github.com/grpcd/protos/grpcdconnect"
 )
 
 const cleanupTimeout = 5 * time.Second
@@ -87,24 +86,24 @@ func Example() {
 	// diagnostics reports them under.
 	checks := diagnostics.Checks{}
 
-	// With no grpcd address there is nothing to register with and nothing to
-	// discover through, and the server serves anyway.
-	var grpcdService grpcdconnect.GRPCDServiceClient
+	// Connect reads GRPCD_ADDRESS and builds the one connection every call to
+	// grpcd goes over: the registration, every discovery, every watch, the
+	// health check. With the variable unset there is nothing to register with
+	// and nothing to discover through, and the server serves anyway.
+	conn := grpcdclient.Connect()
 
-	grpcdAddress := os.Getenv(grpcdclient.GRPCDAddressKey)
+	if conn != nil {
+		// grpcd's own health, asked over that connection.
+		checks[grpcdclient.CheckName] = grpcdclient.Check(conn)
 
-	if grpcdAddress != "" {
-		// Connect builds the one connection every call to grpcd goes over:
-		// the registration, every discovery, every watch.
-		grpcdService = grpcdconnect.NewGRPCDServiceClient(grpcdclient.Connect(grpcdAddress))
+		// One Discovery per process. Held() is the transport under every
+		// client to a discovered dependency: a request to a grpcd:/// URL is
+		// routed by its procedure to the replica held for it, discovered on
+		// first use and watched from then on; any other URL goes over the
+		// standard transport as it is.
+		discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)
 
-		// One Discovery per process: the transport under every client to a
-		// discovered dependency. A request to a grpcd:/// URL is routed by
-		// its procedure to the replica held for it, discovered on first use;
-		// any other URL goes over the standard transport as it is.
-		discovery := discover.New(serveCtx, log, grpcdService, discover.NewProbe(nil), nil)
-
-		httpClient := foundationclient.NewHTTPClient(discovery)
+		httpClient := foundationclient.NewHTTPClient(discovery.Held())
 
 		// Every generated client is built against the same base URL and calls
 		// the same URL for the life of the process while the replicas behind
@@ -117,7 +116,13 @@ func Example() {
 		// The example service has no upstream; the method below stands in
 		// for a generated procedure constant of a real one. Its upstream is
 		// what diagnostics report the dependency from.
-		checks["upstream"] = diagnostics.NewUpstreamCheck(httpClient, discovery.Upstream("/example.UpstreamService/Get"))
+		upstream, err := discovery.Upstream(discover.URL("/example.UpstreamService/Get"))
+		if err != nil {
+			log.Error("Failed to name the upstream", slog.Any("error", err))
+			return
+		}
+
+		checks["upstream"] = diagnostics.NewUpstreamCheck(httpClient, upstream)
 	}
 
 	healthSrv := health.NewServer()
@@ -139,16 +144,10 @@ func Example() {
 
 	log = log.With(slog.String("address", addr.String()))
 
-	if grpcdService != nil {
-		registration := grpcdclient.New(log, serverName, addr, methodList, grpcdService, grpcdAddress)
-
-		// The registration stream is the service's own evidence grpcd is up,
-		// so it is what diagnostics report for grpcd. Register holds the
-		// stream open; its ending is what removes the rows, so there is no
-		// deregistration to wait for here.
-		checks[grpcdclient.CheckName] = registration.Check
-
-		go registration.Register(serveCtx)
+	if conn != nil {
+		// Register holds the stream open; its ending is what removes the
+		// rows, so there is no deregistration to wait for here.
+		go grpcdclient.New(log, serverName, addr, methodList, conn).Register(serveCtx)
 	}
 
 	// Serve mounts what was registered and blocks. A deferred teardown cannot

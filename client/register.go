@@ -62,9 +62,6 @@ func (c *Client) hold(ctx context.Context, request *grpcd.RegisterRequest) {
 		return
 	}
 
-	c.setHeld(true)
-	defer c.setHeld(false)
-
 	c.log.InfoContext(ctx, "Registered",
 		slog.Int("method_count", len(c.methods)), slog.Uint64("port", uint64(request.Port)))
 

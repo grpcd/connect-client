@@ -22,12 +22,12 @@ const (
 
 // newClient builds a client on stub for the example service.
 func newClient(stub *grpcdStub, methods []string) *Client {
-	return New(slog.New(slog.DiscardHandler), serverName, addr.New(listenAddr), methods, newService(stub), grpcdAddress)
+	return New(slog.New(slog.DiscardHandler), serverName, addr.New(listenAddr), methods, newService(stub))
 }
 
 func TestNew(t *testing.T) {
 	t.Run("substitutes a logger when given none", func(t *testing.T) {
-		client := New(nil, serverName, addr.New(listenAddr), []string{method}, nil, grpcdAddress)
+		client := New(nil, serverName, addr.New(listenAddr), []string{method}, nil)
 
 		if client.log == nil {
 			t.Fatal("expected a logger")
@@ -98,7 +98,7 @@ func TestRegister(t *testing.T) {
 	t.Run("registers nothing when the address has no port", func(t *testing.T) {
 		stub := &grpcdStub{}
 
-		New(slog.New(slog.DiscardHandler), serverName, addr.New("10.0.0.1"), []string{method}, newService(stub), grpcdAddress).
+		New(slog.New(slog.DiscardHandler), serverName, addr.New("10.0.0.1"), []string{method}, newService(stub)).
 			Register(t.Context())
 
 		if stub.registrations() != 0 {
@@ -109,7 +109,7 @@ func TestRegister(t *testing.T) {
 	t.Run("registers nothing when the port is not a number", func(t *testing.T) {
 		stub := &grpcdStub{}
 
-		New(slog.New(slog.DiscardHandler), serverName, addr.New("10.0.0.1:http"), []string{method}, newService(stub), grpcdAddress).
+		New(slog.New(slog.DiscardHandler), serverName, addr.New("10.0.0.1:http"), []string{method}, newService(stub)).
 			Register(t.Context())
 
 		if stub.registrations() != 0 {
@@ -137,7 +137,7 @@ func TestRegister(t *testing.T) {
 		transport := &unopenableTransport{err: errors.New("unavailable"), onOpen: func(int) { cancel() }}
 		service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(transport))
 
-		New(slog.New(slog.DiscardHandler), serverName, addr.New(listenAddr), []string{method}, service, grpcdAddress).
+		New(slog.New(slog.DiscardHandler), serverName, addr.New(listenAddr), []string{method}, service).
 			Register(ctx)
 
 		if transport.opened() != 1 {

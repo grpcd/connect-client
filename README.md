@@ -21,10 +21,10 @@ go get github.com/grpcd/connect-client
 
 ## What's Included
 
-- **`client/`** - Client SDK for method registration, and the connection every
-  call to grpcd goes over
-- **`discover/`** - Transport that routes `grpcd:///` URLs to the replica
-  discovered for the procedure they name
+- **`client/`** - The connection every call to grpcd goes over, method
+  registration, and grpcd's health as a dependency check
+- **`discover/`** - Transports that resolve `grpcd:///` URLs to the replica
+  discovered for the procedure they name, per request or held
 
 The endpoints a service exposes and the method list it advertises come from
 [connect-service](https://github.com/pbrpc/connect-service); this library takes
@@ -41,20 +41,21 @@ here.
 
 ### Connecting
 
-`client.Connect` builds the one `*connect.Client` every call to grpcd goes
-over: the foundation's standard HTTP client, speaking the gRPC protocol grpcd
-serves, under the foundation's ready transport, so a grpcd that cannot be
-reached is retried on a backoff schedule rather than on every call. The
-generated `grpcdconnect.NewGRPCDServiceClient` is built on it and shared by the
-registration and every discovery.
+`client.Connect` reads `GRPCD_ADDRESS` and builds the one connection every
+call to grpcd goes over: the foundation's standard HTTP client, speaking the
+gRPC protocol grpcd serves, under the foundation's ready transport, so a grpcd
+that cannot be reached is retried on a backoff schedule rather than on every
+call. It is the only place the variable is read; with it unset, `Connect`
+answers nil and the service decides whether to serve without grpcd. The
+`*client.Connection` is the generated `grpcdconnect.GRPCDServiceClient`, so it
+goes wherever one is taken, and knows the address it was built for.
 
 ### Registering
 
-`client.New` takes the `grpcdconnect.GRPCDServiceClient` rather than an
-address, so the connection is yours to build and a test can supply a fake. It
-also takes your listener's address: grpcd reads the IP off the connection and
-cannot see the port you are serving on, so the port half comes from there. The
-grpcd address is what the diagnostics entry reports.
+`client.New` takes the connection and your listener's address: grpcd reads the
+IP off the connection and cannot see the port you are serving on, so the port
+half comes from there. A test supplies any generated grpcd client in the
+connection's place.
 
 `Register` opens the registration stream and holds it. The stream is the
 registration — grpcd writes the rows when it opens and removes them when it
@@ -69,44 +70,54 @@ that and returns rather than holding a stream that claims otherwise.
 A service that depends on grpcd-registered methods addresses them by the
 `grpcd:///` scheme: `grpcd:///package.Service/Method` names a method as it was
 registered, with no authority, and nothing in it is ever dialed as written.
-The `discover` package supplies the transport that gives the scheme its
-meaning. `discover.New` is built once per process on the same grpcd client the
-registration uses, and goes under the one HTTP client every dependency's
-Connect client is built on, each against `discover.BaseURL`:
+`discover.URL` builds one from a generated procedure constant.
+
+Resolving the scheme is the `Discover` loop and nothing else: ask grpcd for
+the method in the path, probe each candidate from the service's own network
+position, report the ones it cannot reach, close the stream on the one it
+can, and send there. `discover.New` is built once per process on the
+connection `Connect` answered with, and offers that resolution two ways, both
+`http.RoundTripper`s:
+
+- The `Discovery` itself resolves every request on its own and keeps nothing,
+  so each request lands where grpcd sends it. A gateway forwards through it.
+- `discovery.Held()` resolves a method on the first request for it, holds the
+  replica, and sends every later request for that method there. A service
+  reaches its dependencies through it:
 
 ```go
-discovery := discover.New(serveCtx, log, grpcdService, discover.NewProbe(nil), nil)
-httpClient := foundationclient.NewHTTPClient(discovery)
+discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)
+httpClient := foundationclient.NewHTTPClient(discovery.Held())
 upstream := upstreamconnect.NewUpstreamServiceClient(foundationclient.New(httpClient, discover.BaseURL, nil))
 ```
 
-A request to a `grpcd:///` URL is routed by the procedure in its path. The
-first request for a procedure asks grpcd for it, probes each candidate from
-the service's own network position, reports the ones it cannot reach, and
-holds the one it can; every request for that procedure then goes there. When
-the replica stops answering at the transport, the next request rediscovers,
-and one whose body can be sent again is sent to the new replica without the
-caller seeing the change. A request to any other URL goes over the standard
-transport untouched, so the same client reaches a fixed `http://host:port`
-too. The application holds plain clients and never sees an address.
+A held replica that stops answering at the transport is dropped; the next
+request resolves again, and one whose body can be sent again is sent to the
+new replica without the caller seeing the change. A request to any other URL
+goes over the standard transport untouched through either transport, so the
+same client reaches a fixed `http://host:port` too. The application holds
+plain clients and never sees an address.
 
-Each procedure holds a `Watch` naming the address it took. When a replica of
-the service registers later, grpcd tells a share of the holders to move to it;
-the procedure probes the new address, opens a `Watch` naming it, and sends the
-requests that follow there. A new replica takes its share of existing clients
-that way, and a move that cannot be reached is a no-op.
+`Watch` is what holding adds. A held method has a `Watch` naming the address
+it took, opened before the `Discover` that gave it closes, so no registration
+falls between the two. When a replica of the service registers later, grpcd
+tells a share of the holders to move to it; the method probes the new
+address, opens a `Watch` naming it, and sends the requests that follow there.
+A new replica takes its share of existing clients that way, and a move that
+cannot be reached is a no-op.
+
+`discovery.Upstream(url)` names one held method: its `Address()` is what
+diagnostics report, and `Resolve(ctx)` holds it before the first request, for
+a process that wants a method's `Discover` and `Watch` open from startup.
 
 ### Reporting Dependencies
 
 Both are dependencies the service's diagnostics should report. grpcd goes in
-under `client.CheckName` as the registration's own `Check`: while the stream is
-held, grpcd accepted this service's registration and the connection is alive,
-which is more than a health call could say. A process that discovers without
-registering reports grpcd from `discovery.Check(address)` instead, which is
-reachable while any procedure holds a replica. An upstream goes in through
-`diagnostics.NewUpstreamCheck` with the HTTP client above and
-`discovery.Upstream(method)`, which probes and reports the replica that method
-is on.
+under `client.CheckName` as `client.Check(conn)`, which asks grpcd's own health
+procedure over the same connection everything else uses. An upstream goes in
+through `diagnostics.NewUpstreamCheck` with the HTTP client above and
+`discovery.Upstream(url)`, which probes and reports the replica that method is
+on.
 
 ## Configuration
 

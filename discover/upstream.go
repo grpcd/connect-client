@@ -1,26 +1,28 @@
 package discover
 
 import (
-	"io"
+	"context"
 	"log/slog"
 	"net/http"
 	"sync"
 )
 
-// Upstream is one method reached through grpcd.
+// Upstream is one method held through grpcd: the replica resolved for it,
+// kept and watched until it stops answering or grpcd moves the holder.
 //
-// Discovery hands it every request whose path names its method, and it sends
-// each to the replica held right now, discovering one first when none is. The
-// Connect client the request came from never sees an address; the replica
-// can change under it and it keeps calling the same URL.
+// The holding transport hands it every request whose path names its method,
+// and it sends each to the replica held right now, resolving one first when
+// none is. The Connect client the request came from never sees an address;
+// the replica can change under it and it keeps calling the same URL.
 type Upstream struct {
 	discovery *Discovery
 	method    string
 	log       *slog.Logger
 
 	// mu guards address and watcher, which change together, and serializes
-	// discovery: the request that finds no address held runs it, and the ones
-	// behind it wait for the result rather than each discovering on their own.
+	// resolution: the request that finds no address held runs it, and the
+	// ones behind it wait for the result rather than each resolving on their
+	// own.
 	mu      sync.Mutex
 	address string
 	watcher *watcher
@@ -35,10 +37,20 @@ func (u *Upstream) Address() string {
 	return u.address
 }
 
-// RoundTrip sends req to the held replica, discovering one first when none is
+// Resolve holds a replica now rather than on the first request, for a caller
+// that wants the method's Discover and Watch open from startup. It is a no-op
+// while one is held. The wait for a grpcd that cannot be reached, or for a
+// method nothing has registered yet, is ctx's to end.
+func (u *Upstream) Resolve(ctx context.Context) error {
+	_, err := u.hold(ctx)
+
+	return err
+}
+
+// RoundTrip sends req to the held replica, resolving one first when none is
 // held. A request the replica does not answer at the transport is the signal
 // the replica is gone: the address is dropped, and a request whose body can be
-// sent again is sent once more to whatever is discovered next, so a unary call
+// sent again is sent once more to whatever is resolved next, so a unary call
 // that lands on a dead replica succeeds on a live one without the caller
 // seeing it. A request that cannot be resent, or whose own context has ended,
 // gets the error.
@@ -48,7 +60,7 @@ func (u *Upstream) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	response, err := u.send(req, address, req.Body)
+	response, err := u.discovery.send(req, address, req.Body)
 	if err == nil || req.Context().Err() != nil {
 		return response, err
 	}
@@ -72,18 +84,5 @@ func (u *Upstream) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return u.send(req, address, body)
-}
-
-// send carries req to address over the base transport, with body in place of
-// the one it arrived with. The request is cloned so the caller's is untouched:
-// the clone is a cleartext HTTP request to the replica, whatever the caller
-// addressed.
-func (u *Upstream) send(req *http.Request, address string, body io.ReadCloser) (*http.Response, error) {
-	attempt := req.Clone(req.Context())
-	attempt.URL.Scheme = "http"
-	attempt.URL.Host = address
-	attempt.Body = body
-
-	return u.discovery.base.RoundTrip(attempt)
+	return u.discovery.send(req, address, body)
 }
