@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.3.0 - 2026-09-16
+#### Features
+- Connect reads GRPCD_ADDRESS - (7b7c36d) - Nathan Blair
+
+- - -
+
 ## 0.2.1 - 2026-09-15
 #### Bug Fixes
 - otelhttp is indirect - (a4176f7) - Nathan Blair
