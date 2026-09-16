@@ -104,15 +104,15 @@ func (d *Discovery) resolve(
 }
 
 // hold answers with the replica held, resolving one when none is. Resolution
-// runs under the lock, so requests arriving while it runs wait for its result.
-// It answers with an error when resolution fails, and the request that asked
-// gets it; the next request asks again.
+// runs under the resolving lock, so requests arriving while it runs wait for
+// its result. It answers with an error when resolution fails, and the request
+// that asked gets it; the next request asks again.
 func (u *Upstream) hold(ctx context.Context) (string, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
+	u.resolving.Lock()
+	defer u.resolving.Unlock()
 
-	if u.address != "" {
-		return u.address, nil
+	if address := u.Address(); address != "" {
+		return address, nil
 	}
 
 	// The Watch on the candidate is open before the Discover stream closes,
@@ -135,8 +135,10 @@ func (u *Upstream) hold(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	u.mu.Lock()
 	u.address = address
 	u.watcher = w
+	u.mu.Unlock()
 
 	go u.follow(w)
 

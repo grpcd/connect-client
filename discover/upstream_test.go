@@ -1,6 +1,7 @@
 package discover
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -350,6 +351,84 @@ func TestResolve(t *testing.T) {
 		}
 		if stub.discoveries() != 1 {
 			t.Errorf("discoveries = %d, want one", stub.discoveries())
+		}
+	})
+
+	t.Run("reports no address while a resolution is in progress", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		// Nothing serves the method and the holder waits, so the resolution
+		// is in progress until the test ends it.
+		stub := &grpcdStub{scripts: offers(), discoverOpened: make(chan struct{}, 1)}
+		u := newUpstream(ctx, stub, probeStub(), newBaseStub())
+
+		resolved := make(chan error, 1)
+		go func() { resolved <- u.Resolve(ctx) }()
+
+		await(t, stub.discoverOpened, "the resolution never started")
+
+		// A reader answers now, without waiting for the resolution.
+		if got := u.Address(); got != "" {
+			t.Errorf("address = %q, want none while resolving", got)
+		}
+
+		cancel()
+
+		select {
+		case err := <-resolved:
+			if err == nil {
+				t.Error("expected the cancelled resolution to be reported")
+			}
+		case <-t.Context().Done():
+			t.Fatal("the resolution never ended")
+		}
+	})
+
+	t.Run("shares one resolution between requests that arrive during it", func(t *testing.T) {
+		stub := &grpcdStub{scripts: offers(replicaA)}
+
+		// The probe holds the first resolution until the test releases it, so
+		// the second request arrives while it is in progress.
+		probing := make(chan struct{}, 1)
+		release := make(chan struct{})
+		probe := func(ctx context.Context, _ string) error {
+			signal(probing)
+
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		u := newUpstream(t.Context(), stub, probe, newBaseStub())
+
+		answers := make(chan string, 2)
+		for range 2 {
+			go func() {
+				got, _ := call(t.Context(), t, u)
+				answers <- got
+			}()
+		}
+
+		await(t, probing, "the resolution never started")
+		close(release)
+
+		for range 2 {
+			select {
+			case got := <-answers:
+				if got != replicaA {
+					t.Errorf("answered by %q, want %q", got, replicaA)
+				}
+			case <-t.Context().Done():
+				t.Fatal("a request never answered")
+			}
+		}
+
+		if stub.discoveries() != 1 {
+			t.Errorf("discoveries = %d, want the one shared by both", stub.discoveries())
 		}
 	})
 

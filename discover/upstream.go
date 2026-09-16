@@ -19,13 +19,15 @@ type Upstream struct {
 	method    string
 	log       *slog.Logger
 
-	// mu guards address and watcher, which change together, and serializes
-	// resolution: the request that finds no address held runs it, and the
-	// ones behind it wait for the result rather than each resolving on their
-	// own.
-	mu      sync.Mutex
-	address string
-	watcher *watcher
+	// resolving serializes resolution: the request that finds no address held
+	// runs it, and the ones behind it wait for the result rather than each
+	// resolving on their own. mu guards address and watcher, which change
+	// together, and is held only to read or write them, never across a
+	// resolution, so a reader such as diagnostics answers while one runs.
+	resolving sync.Mutex
+	mu        sync.Mutex
+	address   string
+	watcher   *watcher
 }
 
 // Address reports the replica the upstream is on right now, or "" while none

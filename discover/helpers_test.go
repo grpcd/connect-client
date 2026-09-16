@@ -71,6 +71,11 @@ type grpcdStub struct {
 	watchOpened chan struct{}
 	watchEnded  chan struct{}
 
+	// discoverOpened receives one value per Discover opened, so a test can
+	// act while a resolution is in progress. Buffered; a test that sets it
+	// reads it.
+	discoverOpened chan struct{}
+
 	mu        sync.Mutex
 	discovers int
 	waited    []bool
@@ -83,6 +88,8 @@ func (s *grpcdStub) Discover(ctx context.Context, stream grpcdconnect.GRPCDServi
 	s.discovers++
 	script := s.scripts[min(s.discovers, len(s.scripts))-1]
 	s.mu.Unlock()
+
+	signal(s.discoverOpened)
 
 	if s.discoverErr != nil {
 		return s.discoverErr
