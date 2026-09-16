@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.4.0 - 2026-09-16
+#### Features
+- use connect-go compatible health check - (6757410) - Nathan Blair
+
+- - -
+
 ## 0.3.1 - 2026-09-16
 #### Bug Fixes
 - allow skipping waiting of Discover - (6d12c04) - Nathan Blair
