@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.3.1 - 2026-09-16
+#### Bug Fixes
+- allow skipping waiting of Discover - (6d12c04) - Nathan Blair
+
+- - -
+
 ## 0.3.0 - 2026-09-16
 #### Features
 - Connect reads GRPCD_ADDRESS - (7b7c36d) - Nathan Blair
