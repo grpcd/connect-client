@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.6.0 - 2026-09-16
+#### Features
+- probe the method on Discover - (fe632dc) - Nathan Blair
+
+- - -
+
 ## 0.5.3 - 2026-09-16
 #### Bug Fixes
 - eat one message - (3b5d8f7) - Nathan Blair
