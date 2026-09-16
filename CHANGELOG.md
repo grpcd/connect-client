@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.5.0 - 2026-09-16
+#### Features
+- use connect-testing and remove grpc-testing - (3a9901d) - Nathan Blair
+
+- - -
+
 ## 0.4.1 - 2026-09-16
 #### Bug Fixes
 - bump grpcd/protos - (d5ab066) - Nathan Blair
