@@ -70,6 +70,7 @@ type grpcdStub struct {
 
 	mu        sync.Mutex
 	discovers int
+	waited    []bool
 	dead      []string
 	watched   []string
 }
@@ -85,9 +86,14 @@ func (s *grpcdStub) Discover(ctx context.Context, stream grpcdconnect.GRPCDServi
 	}
 
 	// The method, then verdicts on each candidate.
-	if _, err := stream.Receive(); err != nil {
+	request, err := stream.Receive()
+	if err != nil {
 		return err
 	}
+
+	s.mu.Lock()
+	s.waited = append(s.waited, !request.GetNoWait())
+	s.mu.Unlock()
 
 	for _, candidate := range script.candidates {
 		if err := stream.Send(&grpcd.DiscoverResponse{Address: candidate}); err != nil {
@@ -112,9 +118,24 @@ func (s *grpcdStub) Discover(ctx context.Context, stream grpcdconnect.GRPCDServi
 		return script.end
 	}
 
+	// Nothing left to offer: a caller that declined to wait is told so, the
+	// way grpcd tells it; any other waits for a registration, which here is
+	// the client giving up.
+	if request.GetNoWait() {
+		return connect.NewError(connect.CodeNotFound, "nothing serves the method")
+	}
+
 	<-ctx.Done()
 
 	return nil
+}
+
+// waits answers with whether each Discover asked to wait, in order.
+func (s *grpcdStub) waits() []bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]bool(nil), s.waited...)
 }
 
 func (s *grpcdStub) Watch(

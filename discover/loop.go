@@ -13,12 +13,16 @@ import (
 // closed and may refuse it with an error, which ends the resolution; a holder
 // opens its Watch there, so no registration falls between the two.
 //
+// wait is whether grpcd holds the stream for a registration when nothing
+// serves the method. A holder waits: the dependency is the caller's to have.
+// A resolution for one request does not, and gets NotFound at once.
+//
 // The stream runs under the process context, ended early when the caller's
 // ends, so a caller that gave up does not leave a resolution running and a
 // resolution in progress is not tied to the request that started it. Closing
 // the stream is how grpcd is told the candidate worked.
 func (d *Discovery) resolve(
-	ctx context.Context, method string, accept func(ctx context.Context, address string) error,
+	ctx context.Context, method string, wait bool, accept func(ctx context.Context, address string) error,
 ) (string, error) {
 	askCtx, cancel := context.WithCancel(d.ctx)
 	defer cancel()
@@ -40,7 +44,8 @@ func (d *Discovery) resolve(
 	defer stream.Close()
 
 	request := &grpcd.DiscoverRequest{
-		Step: &grpcd.DiscoverRequest_MethodName{MethodName: method},
+		Step:   &grpcd.DiscoverRequest_MethodName{MethodName: method},
+		NoWait: !wait,
 	}
 
 	if err = stream.Send(request); err != nil {
@@ -109,7 +114,7 @@ func (u *Upstream) hold(ctx context.Context) (string, error) {
 	// process context alone: it outlives the request.
 	var w *watcher
 
-	address, err := u.discovery.resolve(ctx, u.method, func(ctx context.Context, address string) error {
+	address, err := u.discovery.resolve(ctx, u.method, true, func(ctx context.Context, address string) error {
 		w = u.watch(address)
 
 		if !opened(ctx, w) {

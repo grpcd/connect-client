@@ -80,10 +80,13 @@ connection `Connect` answered with, and offers that resolution two ways, both
 `http.RoundTripper`s:
 
 - The `Discovery` itself resolves every request on its own and keeps nothing,
-  so each request lands where grpcd sends it. A gateway forwards through it.
+  so each request lands where grpcd sends it. It asks grpcd not to wait: a
+  request naming a method nothing serves fails with grpcd's `NotFound` at
+  once. A gateway forwards through it.
 - `discovery.Held()` resolves a method on the first request for it, holds the
-  replica, and sends every later request for that method there. A service
-  reaches its dependencies through it:
+  replica, and sends every later request for that method there. It waits for
+  a method nothing serves yet, since the dependency is the caller's to have.
+  A service reaches its dependencies through it:
 
 ```go
 discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)

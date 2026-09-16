@@ -113,7 +113,9 @@ func New(
 // RoundTrip resolves req's procedure through grpcd and sends req to the
 // replica it names, keeping nothing, when req's URL carries the grpcd scheme;
 // any other request goes over the base transport as it is. Every request
-// resolves on its own, so each lands where grpcd sends it.
+// resolves on its own, so each lands where grpcd sends it, and one naming a
+// procedure nothing serves fails at once rather than waiting for a
+// registration.
 func (d *Discovery) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL.Scheme != Scheme {
 		return d.base.RoundTrip(req)
@@ -123,7 +125,7 @@ func (d *Discovery) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, ErrNoProcedure
 	}
 
-	address, err := d.resolve(req.Context(), req.URL.Path, nil)
+	address, err := d.resolve(req.Context(), req.URL.Path, false, nil)
 	if err != nil {
 		return nil, err
 	}

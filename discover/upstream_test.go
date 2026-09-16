@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sync"
 	"testing"
+
+	"connectrpc.com/connect/v2"
 )
 
 func TestNew(t *testing.T) {
@@ -113,6 +115,21 @@ func TestDiscoveryRoundTrip(t *testing.T) {
 		}
 	})
 
+	t.Run("does not wait for a procedure nothing serves", func(t *testing.T) {
+		stub := &grpcdStub{scripts: offers()}
+		d := newDiscovery(t.Context(), stub, probeStub(), newBaseStub())
+
+		// The test's own context is never cancelled here: the answer has to
+		// come from grpcd declining, not from the caller giving up.
+		_, err := call(t.Context(), t, d)
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			t.Fatalf("error = %v, want grpcd's not found", err)
+		}
+		if waits := stub.waits(); !slices.Equal(waits, []bool{false}) {
+			t.Errorf("asked to wait: %v, want not", waits)
+		}
+	})
+
 	t.Run("passes any other URL to the base transport as it is", func(t *testing.T) {
 		stub := &grpcdStub{}
 		d := newDiscovery(t.Context(), stub, probeStub(), newBaseStub())
@@ -172,6 +189,9 @@ func TestHeld(t *testing.T) {
 
 		if stub.discoveries() != 1 {
 			t.Errorf("discoveries = %d, want the one lookup shared by both calls", stub.discoveries())
+		}
+		if waits := stub.waits(); !slices.Equal(waits, []bool{true}) {
+			t.Errorf("asked to wait: %v, want a holder waiting for its dependency", waits)
 		}
 		if watched := stub.watchedAddresses(); !slices.Equal(watched, []string{replicaA}) {
 			t.Errorf("watched %v, want the held replica", watched)
