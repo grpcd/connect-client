@@ -74,10 +74,15 @@ registered, with no authority, and nothing in it is ever dialed as written.
 
 Resolving the scheme is the `Discover` loop and nothing else: ask grpcd for
 the method in the path, probe each candidate from the service's own network
-position, report the ones it cannot reach, close the stream on the one it
-can, and send there. `discover.New` is built once per process on the
-connection `Connect` answered with, and offers that resolution two ways, both
-`http.RoundTripper`s:
+position, report the ones that fail, close the stream on the one that passes,
+and send there. The probe is an `OPTIONS` request to the method's path at the
+candidate. A Connect server answers it before reading anything: `405` with
+`Allow` on a procedure it mounts, `404` on one it does not. So a candidate
+passes only when it serves the method itself; a host that is up but serves
+something else, an address handed to a different container, fails and is
+reported like one that is down. `discover.New` is built once per process on
+the connection `Connect` answered with, and offers that resolution two ways,
+both `http.RoundTripper`s:
 
 - The `Discovery` itself resolves every request on its own and keeps nothing,
   so each request lands where grpcd sends it. It asks grpcd not to wait: a
@@ -107,7 +112,7 @@ falls between the two. When a replica of the service registers later, grpcd
 tells a share of the holders to move to it; the method probes the new
 address, opens a `Watch` naming it, and sends the requests that follow there.
 A new replica takes its share of existing clients that way, and a move that
-cannot be reached is a no-op.
+fails the probe is a no-op.
 
 `discovery.Upstream(url)` names one held method: its `Address()` is what
 diagnostics report, and `Resolve(ctx)` holds it before the first request, for

@@ -47,6 +47,10 @@ type grpcdStub struct {
 	// discoverErr fails every Discover before any candidate is offered.
 	discoverErr error
 
+	// closeErr ends every Discover with an error once the client has closed
+	// it, in place of the clean end grpcd gives. nil ends them cleanly.
+	closeErr error
+
 	// onWatch runs on every Watch with the call's ordinal; an error it answers
 	// with fails that Watch. nil accepts every one.
 	onWatch func(n int) error
@@ -114,7 +118,7 @@ func (s *grpcdStub) Discover(ctx context.Context, stream grpcdconnect.GRPCDServi
 		report, err := stream.Receive()
 		if errors.Is(err, io.EOF) {
 			// The client closed the stream: the candidate worked.
-			return nil
+			return s.closeErr
 		}
 		if err != nil {
 			return err
@@ -236,7 +240,7 @@ func newService(stub *grpcdStub) grpcdconnect.GRPCDServiceClient {
 
 // probeStub fails the addresses named in dead and passes every other.
 func probeStub(dead ...string) Probe {
-	return func(_ context.Context, address string) error {
+	return func(_ context.Context, _, address string) error {
 		for _, d := range dead {
 			if d == address {
 				return errors.New("unreachable")

@@ -2,6 +2,8 @@ package discover
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log/slog"
 
 	"go.opentelemetry.io/otel/trace"
@@ -70,7 +72,7 @@ func (d *Discovery) resolve(
 
 		address := response.GetAddress()
 
-		if err = d.probe(askCtx, address); err != nil {
+		if err = d.probe(askCtx, method, address); err != nil {
 			log.InfoContext(askCtx, "Candidate unreachable, reporting it dead",
 				slog.String("address", address), slog.Any("error", err))
 
@@ -93,9 +95,17 @@ func (d *Discovery) resolve(
 			}
 		}
 
-		// Delivery of the close is not waited on: the address is resolved
-		// either way, and the deferred Close ends the stream regardless.
-		_ = stream.CloseSend()
+		// grpcd takes the close as the verdict and ends the stream once it has
+		// read it. That end is waited for: a stream torn down before then
+		// reaches grpcd as a cancellation, and the verdict with it. The address
+		// is resolved either way.
+		if err = stream.CloseSend(); err == nil {
+			_, err = stream.Receive()
+		}
+
+		if !errors.Is(err, io.EOF) {
+			log.WarnContext(askCtx, "Verdict may not have reached grpcd", slog.Any("error", err))
+		}
 
 		log.InfoContext(askCtx, "Resolved", slog.String("address", address))
 
@@ -203,7 +213,7 @@ func (u *Upstream) follow(w *watcher) {
 			return
 		}
 
-		if err := u.discovery.probe(ctx, next); err != nil {
+		if err := u.discovery.probe(ctx, u.method, next); err != nil {
 			log.InfoContext(ctx, "Told to move to an unreachable address, staying",
 				slog.String("address", next), slog.Any("error", err))
 

@@ -6,19 +6,37 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/pbrpc/connect-service/health"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+
+	"github.com/grpcd/protos/grpcdconnect"
 )
 
-// healthClient stands in for the HTTP client a probe asks with: it hands
-// every request to a health server's probe route directly, so the probe runs
-// against the real route with nothing listening.
-type healthClient struct {
-	srv *health.Server
+// mountedClient stands in for the HTTP client a probe asks with: it hands
+// every request to a mux with the grpcd service mounted on it, so the probe
+// runs against the real procedure handlers with nothing listening.
+type mountedClient struct {
+	mux *http.ServeMux
 }
 
-func (c *healthClient) Do(request *http.Request) (*http.Response, error) {
+func newMountedClient() *mountedClient {
+	rpc := connect.NewServer()
+	grpcdconnect.RegisterGRPCDServiceHandler(rpc, &grpcdStub{})
+
+	mux := http.NewServeMux()
+	connecthttp.Mount(mux, rpc)
+
+	return &mountedClient{mux: mux}
+}
+
+func (c *mountedClient) Do(request *http.Request) (*http.Response, error) {
+	// Presented the way the standard transport presents it: over HTTP/2,
+	// which a bidi procedure's handler requires before it looks at anything
+	// else.
+	request.ProtoMajor, request.ProtoMinor = 2, 0
+
 	recorder := httptest.NewRecorder()
-	c.srv.ServeHTTP(recorder, request)
+	c.mux.ServeHTTP(recorder, request)
 
 	return recorder.Result(), nil
 }
@@ -39,26 +57,41 @@ func TestNewProbe(t *testing.T) {
 		}
 	})
 
-	t.Run("passes an address that answers", func(t *testing.T) {
-		if err := NewProbe(&healthClient{srv: health.NewServer()})(t.Context(), "10.0.0.1:50051"); err != nil {
+	t.Run("passes an address that serves the method", func(t *testing.T) {
+		probe := NewProbe(newMountedClient())
+
+		if err := probe(t.Context(), grpcdconnect.GRPCDServiceDiscoverProcedure, "10.0.0.1:50051"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("passes an address that answers not serving", func(t *testing.T) {
-		srv := health.NewServer()
-		srv.Shutdown()
+	t.Run("fails an address that serves the service but not the method", func(t *testing.T) {
+		probe := NewProbe(newMountedClient())
 
-		if err := NewProbe(&healthClient{srv: srv})(t.Context(), "10.0.0.1:50051"); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err := probe(t.Context(), "/grpcd.GRPCDService/Missing", "10.0.0.1:50051"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("fails an address that does not serve the service", func(t *testing.T) {
+		probe := NewProbe(newMountedClient())
+
+		if err := probe(t.Context(), method, "10.0.0.1:50051"); err == nil {
+			t.Fatal("expected error")
 		}
 	})
 
 	t.Run("fails an address that does not answer", func(t *testing.T) {
 		want := errors.New("connection refused")
 
-		if err := NewProbe(&failingClient{err: want})(t.Context(), "10.0.0.1:50051"); !errors.Is(err, want) {
+		if err := NewProbe(&failingClient{err: want})(t.Context(), method, "10.0.0.1:50051"); !errors.Is(err, want) {
 			t.Fatalf("error = %v, want %v", err, want)
+		}
+	})
+
+	t.Run("fails a method that makes no URL", func(t *testing.T) {
+		if err := NewProbe(newMountedClient())(t.Context(), "/pkg.Service/Method\x00", "10.0.0.1:50051"); err == nil {
+			t.Fatal("expected error")
 		}
 	})
 }

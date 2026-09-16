@@ -23,6 +23,10 @@ type watcher struct {
 	// discovery waits for before closing the stream it is replacing.
 	opened <-chan struct{}
 
+	// done is closed once the watcher has stopped: its stream is closed and
+	// moves is closed too.
+	done <-chan struct{}
+
 	// stop ends the watcher.
 	stop context.CancelFunc
 }
@@ -33,16 +37,18 @@ func (u *Upstream) watch(address string) *watcher {
 
 	moves := make(chan string)
 	opened := make(chan struct{})
+	done := make(chan struct{})
 
-	go u.keepWatching(ctx, address, moves, opened)
+	go u.keepWatching(ctx, address, moves, opened, done)
 
-	return &watcher{moves: moves, opened: opened, stop: cancel}
+	return &watcher{moves: moves, opened: opened, done: done, stop: cancel}
 }
 
 // keepWatching holds one Watch stream after another until ctx ends.
 func (u *Upstream) keepWatching(
-	ctx context.Context, address string, moves chan<- string, opened chan struct{},
+	ctx context.Context, address string, moves chan<- string, opened, done chan struct{},
 ) {
+	defer close(done)
 	defer close(moves)
 
 	var once sync.Once

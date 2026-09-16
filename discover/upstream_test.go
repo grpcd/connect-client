@@ -392,7 +392,7 @@ func TestResolve(t *testing.T) {
 		// the second request arrives while it is in progress.
 		probing := make(chan struct{}, 1)
 		release := make(chan struct{})
-		probe := func(ctx context.Context, _ string) error {
+		probe := func(ctx context.Context, _, _ string) error {
 			signal(probing)
 
 			select {

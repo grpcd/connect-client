@@ -105,6 +105,25 @@ func TestRoundTrip(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps the address when grpcd ends the closed stream with an error", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		stub := &grpcdStub{scripts: offers(replicaA), closeErr: errors.New("store unavailable")}
+		u := newUpstream(ctx, stub, probeStub(), newBaseStub())
+
+		got, err := call(t.Context(), t, u)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != replicaA {
+			t.Errorf("answered by %q, want %q", got, replicaA)
+		}
+		if got := u.Address(); got != replicaA {
+			t.Errorf("address = %q, want %q held", got, replicaA)
+		}
+	})
+
 	t.Run("fails the request when discovery cannot be opened", func(t *testing.T) {
 		stub := &grpcdStub{scripts: offers(replicaA), discoverErr: errors.New("unavailable")}
 		u := newUpstream(t.Context(), stub, probeStub(), newBaseStub())
@@ -352,7 +371,7 @@ func TestFollow(t *testing.T) {
 		// The probe reports what it was asked about, so the test knows the
 		// move was considered and refused.
 		probed := make(chan string, 1)
-		probe := func(_ context.Context, address string) error {
+		probe := func(_ context.Context, _, address string) error {
 			if address == replicaB {
 				probed <- address
 
@@ -388,7 +407,7 @@ func TestFollow(t *testing.T) {
 
 		// The replica is dropped while the move is being probed, so the move
 		// arrives for an address no longer held and is discarded.
-		probe := func(_ context.Context, address string) error {
+		probe := func(_ context.Context, _, address string) error {
 			if address == replicaB {
 				u.drop(replicaA)
 			}
@@ -435,7 +454,6 @@ func TestFollow(t *testing.T) {
 		stub := &grpcdStub{
 			moves:       make(chan string),
 			watchOpened: make(chan struct{}, 1),
-			watchEnded:  make(chan struct{}, 1),
 			moveSent:    make(chan struct{}, 1),
 		}
 		u := newUpstream(ctx, stub, probeStub(), newBaseStub())
@@ -450,18 +468,11 @@ func TestFollow(t *testing.T) {
 
 		w.stop()
 
-		await(t, stub.watchEnded, "the watch never ended")
+		// Nothing reads the move, so the stop is the only way out.
+		await(t, w.done, "the watcher did not stop")
 
-		// The held move may still be delivered to a reader that turns up
-		// before the stop is seen, so the first receive can be it; the one
-		// after is the close, which is what a follower needs to return.
-		_, open := <-w.moves
-		if open {
-			_, open = <-w.moves
-		}
-
-		if open {
-			t.Fatal("the watcher did not stop")
+		if _, open := <-w.moves; open {
+			t.Fatal("moves is still open after the watcher stopped")
 		}
 	})
 
@@ -471,7 +482,7 @@ func TestFollow(t *testing.T) {
 
 		// The process ends while the move is being probed, so the watch on
 		// it is started under an ended context and never opens.
-		probe := func(_ context.Context, address string) error {
+		probe := func(_ context.Context, _, address string) error {
 			if address == replicaB {
 				end()
 			}
