@@ -453,9 +453,15 @@ func TestFollow(t *testing.T) {
 		await(t, stub.watchEnded, "the watch never ended")
 
 		// The held move may still be delivered to a reader that turns up
-		// before the stop is seen; either way the channel closes, which is
-		// what a follower needs to return.
-		for range w.moves {
+		// before the stop is seen, so the first receive can be it; the one
+		// after is the close, which is what a follower needs to return.
+		_, open := <-w.moves
+		if open {
+			_, open = <-w.moves
+		}
+
+		if open {
+			t.Fatal("the watcher did not stop")
 		}
 	})
 

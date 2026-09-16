@@ -19,8 +19,8 @@ type watcher struct {
 	// moves carries each address grpcd sends. Closed once the watcher stops.
 	moves <-chan string
 
-	// opened is closed once the first stream is open, which is what discovery
-	// waits for before closing the stream it is replacing.
+	// opened is closed once grpcd holds the first stream, which is what
+	// discovery waits for before closing the stream it is replacing.
 	opened <-chan struct{}
 
 	// stop ends the watcher.
@@ -59,8 +59,6 @@ func (u *Upstream) keepWatching(
 			continue
 		}
 
-		once.Do(func() { close(opened) })
-
 		for {
 			response, err := stream.Receive()
 			if err != nil {
@@ -69,8 +67,17 @@ func (u *Upstream) keepWatching(
 				break
 			}
 
+			// grpcd holds the stream once anything arrives on it. Its first
+			// message is empty, saying only that; a move carries an address.
+			once.Do(func() { close(opened) })
+
+			next := response.GetAddress()
+			if next == "" {
+				continue
+			}
+
 			select {
-			case moves <- response.GetAddress():
+			case moves <- next:
 			case <-ctx.Done():
 				_ = stream.Close()
 

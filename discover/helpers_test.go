@@ -1,3 +1,4 @@
+//revive:disable:package-comments
 package discover
 
 import (
@@ -162,6 +163,11 @@ func (s *grpcdStub) Watch(
 		if err := s.onWatch(n); err != nil {
 			return err
 		}
+	}
+
+	// Held, the way grpcd says it: an empty message before any move.
+	if err := stream.Send(&grpcd.WatchResponse{}); err != nil {
+		return err
 	}
 
 	signal(s.watchOpened)
