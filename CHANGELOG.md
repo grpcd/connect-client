@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.7.1 - 2026-09-17
+#### Bug Fixes
+- consistent nomenclature and logging - (31b2f62) - Nathan Blair
+
+- - -
+
 ## 0.7.0 - 2026-09-17
 #### Features
 - remove connect-foundation and use decomposed libraries - (1c41423) - Nathan Blair
