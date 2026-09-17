@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.7.0 - 2026-09-17
+#### Features
+- remove connect-foundation and use decomposed libraries - (1c41423) - Nathan Blair
+
+- - -
+
 ## 0.6.0 - 2026-09-16
 #### Features
 - probe the method on Discover - (fe632dc) - Nathan Blair
