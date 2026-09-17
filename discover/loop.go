@@ -62,6 +62,8 @@ func (d *Discovery) resolve(
 		return "", err
 	}
 
+	log.InfoContext(askCtx, "Discovering method", slog.Bool("wait", wait))
+
 	for {
 		response, err := stream.Receive()
 		if err != nil {
@@ -107,7 +109,7 @@ func (d *Discovery) resolve(
 			log.WarnContext(askCtx, "Verdict may not have reached grpcd", slog.Any("error", err))
 		}
 
-		log.InfoContext(askCtx, "Resolved", slog.String("address", address))
+		log.InfoContext(askCtx, "Discovered", slog.String("address", address))
 
 		return address, nil
 	}
