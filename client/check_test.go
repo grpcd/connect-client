@@ -1,3 +1,4 @@
+//revive:disable:package-comments
 package client
 
 import (
@@ -7,7 +8,7 @@ import (
 
 	"github.com/pbrpc/connect-service/diagnostics"
 	"github.com/pbrpc/connect-service/health"
-	"github.com/pbrpc/connect-testing/mocks/roundtripper"
+	"github.com/pbrpc/testing/mocks/roundtripper"
 )
 
 // answering stands in for grpcd's HTTP side: every probe is answered with

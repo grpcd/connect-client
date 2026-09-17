@@ -15,9 +15,6 @@ import (
 
 const (
 	component = "grpcd-client"
-	// GRPCDAddressKey is the env variable name
-	// of what address to use for the grpcd connection
-	GRPCDAddressKey = "GRPCD_ADDRESS"
 	// CheckName is the diagnostics name a service reports its grpcd
 	// dependency under, so every service reports it under the same one.
 	CheckName = "grpcd"

@@ -1,3 +1,4 @@
+//revive:disable:package-comments
 package client
 
 import (
@@ -8,8 +9,8 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	"github.com/pbrpc/connect-testing/mocks/addr"
 	"github.com/pbrpc/connect-testing/mocks/transport"
+	"github.com/pbrpc/testing/mocks/addr"
 
 	"github.com/grpcd/protos/grpcdconnect"
 )

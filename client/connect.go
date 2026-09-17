@@ -1,13 +1,15 @@
+//revive:disable:package-comments
 package client
 
 import (
 	"net/http"
-	"os"
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	foundationclient "github.com/pbrpc/connect-foundation/client"
+	connectclient "github.com/pbrpc/connect-client"
+	transport "github.com/pbrpc/http-transport"
+	"github.com/pbrpc/otel"
 
 	"github.com/grpcd/protos/grpcdconnect"
 )
@@ -31,27 +33,19 @@ func (c *Connection) Address() string {
 	return c.address
 }
 
-// Connect reads GRPCD_ADDRESS and answers with the connection to it, or nil
-// when the variable is unset: nothing to register with and nothing to
-// discover through, and the caller decides whether to serve anyway. This is
-// the one place the variable is read.
+// Connect to grpcd.
 //
 // The connection is the foundation's standard HTTP client under the ready
 // transport, so a grpcd that cannot be reached is retried on its schedule
 // rather than on every call, speaking the gRPC protocol, which is the one
 // grpcd serves. Building it dials nothing.
-func Connect() *Connection {
-	address := os.Getenv(GRPCDAddressKey)
-	if address == "" {
-		return nil
-	}
+func Connect(address string, base http.RoundTripper) *Connection {
+	tp := transport.WithReadiness(base, nil, nil)
+	httpClient := otel.NewHTTPClient(tp)
 
-	tp := foundationclient.NewReadyTransport(nil, nil, nil)
-	httpClient := foundationclient.NewHTTPClient(tp)
-
-	client := foundationclient.New(
+	client := connectclient.New(
 		httpClient,
-		foundationclient.BaseURL(address),
+		connectclient.BaseURL(address),
 		nil,
 		connecthttp.WithGRPC(),
 	)

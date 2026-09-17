@@ -1,23 +1,29 @@
+//revive:disable:package-comments
 package client_test
 
 import (
 	"context"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"github.com/caarlos0/env/v11"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	foundationclient "github.com/pbrpc/connect-foundation/client"
-	foundationotel "github.com/pbrpc/connect-foundation/otel"
-	foundation "github.com/pbrpc/connect-foundation/server"
+	connectserver "github.com/pbrpc/connect-server"
 	"github.com/pbrpc/connect-service/diagnostics"
 	"github.com/pbrpc/connect-service/health"
 	"github.com/pbrpc/connect-service/service"
+	transport "github.com/pbrpc/http-transport"
+	"github.com/pbrpc/lifecycle"
+	pbrpcotel "github.com/pbrpc/otel"
+	svc "github.com/pbrpc/service"
 
+	"github.com/grpcd/connect-client/client"
 	grpcdclient "github.com/grpcd/connect-client/client"
 	"github.com/grpcd/connect-client/discover"
 )
@@ -61,32 +67,48 @@ func Example() {
 	serveCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The same name the otel resource and the grpcd registration are keyed by.
-	serverName := foundation.Name("example")
+	svcCfg := svc.Configuration{Name: "example"}
+	err := env.Parse(&svcCfg)
+	if err != nil {
+		return
+	}
 
-	log, flush, err := foundationotel.Init(ctx, serverName, foundation.Version())
+	stack := lifecycle.Stack{}
+
+	log, flush, err := pbrpcotel.Init(ctx, svcCfg.Name, svcCfg.Version)
 	if err != nil {
 		slog.Default().Error("Failed to initialize telemetry", slog.Any("error", err))
 		return
 	}
+	stack.Push(lifecycle.Logged(log, "telemetry", flush))
 
 	// Init made log the process default, so a handler reaches it with
 	// logger.FromContext(ctx) and its lines carry the request's span.
-	srv := foundation.New(log)
+	host, err := connectserver.FromEnv(log)
+	if err != nil {
+		log.Error("Failed to create server", slog.Any("error", err))
+		return
+	}
+	stack.Push(lifecycle.Logged(log, "server", host.HTTPHost.Server.Shutdown))
 
 	// Deferred before anything else can fail, so every path out of here stops
 	// the server and exports what it logged on the way.
-	defer foundation.HandleGracefulShutdown(ctx, log, srv.HTTP, flush, cleanupTimeout)
+	defer lifecycle.HandleGracefulShutdown(ctx, log, &stack, cleanupTimeout)
 
 	// Checks for the services this one depends on, keyed by the name
 	// diagnostics reports them under.
 	checks := diagnostics.Checks{}
 
-	// Connect reads GRPCD_ADDRESS and builds the one connection every call to
+	// Read grpcd configuration and build the one connection every call to
 	// grpcd goes over: the registration, every discovery, every watch, the
 	// health check. With the variable unset there is nothing to register with
 	// and nothing to discover through, and the server serves anyway.
-	conn := grpcdclient.Connect()
+	configured, err := env.ParseAs[client.Configuration]()
+	base, err := transport.From(nil)
+	if err != nil {
+		return
+	}
+	conn := grpcdclient.Connect(configured.GRPCDAddress, base)
 
 	if conn != nil {
 		// grpcd's own health, asked over that connection.
@@ -99,7 +121,7 @@ func Example() {
 		// standard transport as it is.
 		discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)
 
-		httpClient := foundationclient.NewHTTPClient(discovery.Held())
+		httpClient := pbrpcotel.NewHTTPClient(discovery.Held())
 
 		// Every generated client is built against the same base URL and calls
 		// the same URL for the life of the process while the replicas behind
@@ -112,7 +134,8 @@ func Example() {
 		// The example service has no upstream; the method below stands in
 		// for a generated procedure constant of a real one. Its upstream is
 		// what diagnostics report the dependency from.
-		upstream, err := discovery.Upstream(discover.URL("/example.UpstreamService/Get"))
+		var upstream *discover.Upstream
+		upstream, err = discovery.Upstream(discover.URL("/example.UpstreamService/Get"))
 		if err != nil {
 			log.Error("Failed to name the upstream", slog.Any("error", err))
 			return
@@ -125,13 +148,19 @@ func Example() {
 
 	// The returned method list is what this server exposes beyond the
 	// infrastructure endpoints, which is what it advertises to grpcd.
-	methodList, err := service.Register(srv.RPC, srv.Mux, healthSrv, checks, registerExampleService)
+	methodList, err := service.Register(
+		host.Server,
+		host.HTTPHost.Mux,
+		healthSrv,
+		checks,
+		registerExampleService,
+	)
 	if err != nil {
 		log.Error("Failed to register services", slog.Any("error", err))
 		return
 	}
 
-	lis, err := foundation.Listen()
+	lis, err := net.Listen("tcp", svcCfg.Address)
 	if err != nil {
 		log.Error("Failed to create listener", slog.Any("error", err))
 		return
@@ -143,14 +172,14 @@ func Example() {
 	if conn != nil {
 		// Register holds the stream open; its ending is what removes the
 		// rows, so there is no deregistration to wait for here.
-		go grpcdclient.New(log, serverName, addr, methodList, conn).Register(serveCtx)
+		go grpcdclient.New(log, svcCfg.Name, addr, methodList, conn).Register(serveCtx)
 	}
 
 	// Serve mounts what was registered and blocks. A deferred teardown cannot
 	// run while it does, so it goes to a goroutine and the select below decides
 	// when this returns.
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- srv.Serve(lis) }()
+	go func() { serveErr <- host.Serve(lis) }()
 
 	log.Info("Connect server listening")
 

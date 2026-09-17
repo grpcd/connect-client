@@ -16,8 +16,6 @@ import (
 
 	"git.sonicoriginal.software/logger"
 
-	foundationclient "github.com/pbrpc/connect-foundation/client"
-
 	"github.com/grpcd/protos/grpcdconnect"
 )
 
@@ -89,14 +87,6 @@ func New(
 ) *Discovery {
 	if log == nil {
 		log = logger.NewNullLogger()
-	}
-
-	if probe == nil {
-		probe = NewProbe(nil)
-	}
-
-	if base == nil {
-		base = foundationclient.NewTransport()
 	}
 
 	return &Discovery{

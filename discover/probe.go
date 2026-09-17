@@ -7,8 +7,6 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect/v2/connecthttp"
-
-	foundationclient "github.com/pbrpc/connect-foundation/client"
 )
 
 // Probe reports whether address serves method. It is the client's own probe,
@@ -25,10 +23,6 @@ type Probe func(ctx context.Context, method, address string) error
 // standard HTTP client, which is how a test substitutes one that dials
 // nothing.
 func NewProbe(httpClient connecthttp.HTTPClient) Probe {
-	if httpClient == nil {
-		httpClient = foundationclient.NewHTTPClient(nil)
-	}
-
 	return func(ctx context.Context, method, address string) error {
 		request, err := http.NewRequestWithContext(ctx, http.MethodOptions, "http://"+address+method, nil)
 		if err != nil {
