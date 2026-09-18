@@ -62,7 +62,7 @@ func (d *Discovery) resolve(
 		return "", err
 	}
 
-	log.InfoContext(askCtx, "Discovering method", slog.Bool("wait", wait))
+	log.DebugContext(askCtx, "Discovering method", slog.Bool("wait", wait))
 
 	for {
 		response, err := stream.Receive()

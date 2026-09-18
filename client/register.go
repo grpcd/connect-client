@@ -57,6 +57,9 @@ func (c *Client) hold(ctx context.Context, request *grpcd.RegisterRequest) {
 	}
 	defer stream.Close()
 
+	c.log.DebugContext(ctx, "Registering",
+		slog.Int("method_count", len(c.methods)), slog.Uint64("port", uint64(request.Port)))
+
 	// The one message grpcd sends: the rows are written.
 	if _, err = stream.Receive(); err != nil {
 		c.log.ErrorContext(ctx, "Registration was not accepted", slog.Any("error", err))
