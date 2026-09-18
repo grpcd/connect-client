@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.8.0 - 2026-09-18
+#### Features
+- correctly instrument (or allow it to be) the discovery probe - (b48b0e8) - Nathan Blair
+#### Bug Fixes
+- upgrade to latest otel module - (65f4fed) - Nathan Blair
+
+- - -
+
 ## 0.7.1 - 2026-09-17
 #### Bug Fixes
 - consistent nomenclature and logging - (31b2f62) - Nathan Blair
