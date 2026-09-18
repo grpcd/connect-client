@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.8.1 - 2026-09-18
+#### Bug Fixes
+- upgrade deps - (73cdc0b) - Nathan Blair
+
+- - -
+
 ## 0.8.0 - 2026-09-18
 #### Features
 - correctly instrument (or allow it to be) the discovery probe - (b48b0e8) - Nathan Blair
