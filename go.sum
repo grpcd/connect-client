@@ -37,6 +37,8 @@ github.com/pbrpc/connect-service v0.2.1 h1:UVmgAnAxpDo/brQuLbgvS7UDO6AdkInlm3pO3
 github.com/pbrpc/connect-service v0.2.1/go.mod h1:t29TY6bzODdVEZCxcVi70mdHvRCvyli65QWY9LXl024=
 github.com/pbrpc/connect-service v0.2.3 h1:z3RVR8FPC0SwrC6sLFtQCBWCPy4ONwXhMtMfw9ISUIQ=
 github.com/pbrpc/connect-service v0.2.3/go.mod h1:XKaVA1Meimf/u6gFMvo9JW5mTeYZ4DIQigEpDTi3YbU=
+github.com/pbrpc/connect-service v0.3.0 h1:rXpwTP3hTQn1PN/e5OvOsH3ioMNnuQlcLRXFdMY3i40=
+github.com/pbrpc/connect-service v0.3.0/go.mod h1:XKaVA1Meimf/u6gFMvo9JW5mTeYZ4DIQigEpDTi3YbU=
 github.com/pbrpc/connect-testing v0.4.0 h1:gDrhcMIbvvV+vpXPWqCYY6YbuVNG8tpVK622Fhk+qfE=
 github.com/pbrpc/connect-testing v0.4.0/go.mod h1:MKbG7K+I8L5ms2IR9/9I+CiNnyTCP9ozVq6J8Fuw0Qg=
 github.com/pbrpc/http-server v0.3.1 h1:ynh537l637ywlPR4eHjy/Zug17ulMyma7/xWC3TYSnY=

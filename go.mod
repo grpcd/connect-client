@@ -10,7 +10,7 @@ require (
 	github.com/pbrpc/connect-client v0.1.1
 	github.com/pbrpc/connect-protos v0.2.1
 	github.com/pbrpc/connect-server v0.1.1
-	github.com/pbrpc/connect-service v0.2.3
+	github.com/pbrpc/connect-service v0.3.0
 	github.com/pbrpc/connect-testing v0.4.0
 	github.com/pbrpc/http-transport v0.3.0
 	github.com/pbrpc/lifecycle v0.2.0

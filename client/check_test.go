@@ -9,6 +9,8 @@ import (
 	"github.com/pbrpc/connect-service/diagnostics"
 	"github.com/pbrpc/connect-service/health"
 	"github.com/pbrpc/testing/mocks/roundtripper"
+
+	"github.com/grpcd/protos/grpcdconnect"
 )
 
 // answering stands in for grpcd's HTTP side: every probe is answered with
@@ -45,7 +47,7 @@ func TestCheck(t *testing.T) {
 		}
 
 		// The probe is grpcd's plain HTTP health route at the address the
-		// connection was built for.
+		// connection was built for, asking for the grpcd service.
 		sent := stub.Sent()
 		if len(sent) != 1 {
 			t.Fatalf("expected one probe, got %d", len(sent))
@@ -55,6 +57,9 @@ func TestCheck(t *testing.T) {
 		}
 		if sent[0].Request.URL.Host != grpcdAddress || sent[0].Request.URL.Path != health.HTTPPath {
 			t.Errorf("probed %s, want %s%s", sent[0].Request.URL, grpcdAddress, health.HTTPPath)
+		}
+		if service := sent[0].Request.URL.Query().Get("service"); service != grpcdconnect.GRPCDServiceName {
+			t.Errorf("asked for service %q, want %q", service, grpcdconnect.GRPCDServiceName)
 		}
 	})
 
