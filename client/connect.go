@@ -35,13 +35,13 @@ func (c *Connection) Address() string {
 
 // Connect to grpcd.
 //
-// The connection is the foundation's standard HTTP client under the ready
-// transport, so a grpcd that cannot be reached is retried on its schedule
-// rather than on every call, speaking the gRPC protocol, which is the one
-// grpcd serves. Building it dials nothing.
+// The connection is an instrumented client over the ready transport over
+// base, so a grpcd that cannot be reached is retried on its schedule rather
+// than on every call, speaking the gRPC protocol, which is the one grpcd
+// serves. Building it dials nothing.
 func Connect(address string, base http.RoundTripper) *Connection {
 	tp := transport.WithReadiness(base, nil, nil)
-	httpClient := otel.NewHTTPClient(tp)
+	httpClient := &http.Client{Transport: otel.NewTransport(tp)}
 
 	client := connectclient.New(
 		httpClient,

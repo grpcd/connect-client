@@ -54,10 +54,14 @@ type Discovery struct {
 	log     *slog.Logger
 	tracer  trace.Tracer
 	service grpcdconnect.GRPCDServiceClient
-	probe   Probe
+
+	// probe is what a candidate has to pass before it is used. Built on base
+	// for the process; a test sets its own.
+	probe Probe
 
 	// base carries every request once its host is known: a resolved one
-	// after the replica is chosen, and any other as it arrived.
+	// after the replica is chosen, the probe of a candidate, and any other as
+	// it arrived.
 	base http.RoundTripper
 
 	mu        sync.Mutex
@@ -73,16 +77,13 @@ type Discovery struct {
 // registration uses. Taking it rather than an address is what lets a test
 // supply a fake.
 //
-// probe is what a candidate has to pass before it is used; nil means the one
-// NewProbe builds on the foundation's standard HTTP client.
-//
-// base is the transport requests go over once their host is known; nil means
-// the foundation's standard transport.
+// base is the transport every request goes over once its host is known, the
+// candidate probes included. Instrumentation belongs on it, under the
+// Discovery, so a client span names the replica the request went to.
 func New(
 	ctx context.Context,
 	log *slog.Logger,
 	service grpcdconnect.GRPCDServiceClient,
-	probe Probe,
 	base http.RoundTripper,
 ) *Discovery {
 	if log == nil {
@@ -94,7 +95,7 @@ func New(
 		log:       log.With(slog.String("component", component)),
 		tracer:    otel.Tracer(component),
 		service:   service,
-		probe:     probe,
+		probe:     newProbe(&http.Client{Transport: base}),
 		base:      base,
 		upstreams: map[string]*Upstream{},
 	}

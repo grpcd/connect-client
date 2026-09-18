@@ -303,10 +303,13 @@ func (s *baseStub) sentTo() []string {
 	return append([]string(nil), s.hosts...)
 }
 
-// newDiscovery builds a Discovery on stub, probing with probe and sending
-// over base, under ctx as the process context.
+// newDiscovery builds a Discovery on stub, probing with probe in place of the
+// one built on base, and sending over base, under ctx as the process context.
 func newDiscovery(ctx context.Context, stub *grpcdStub, probe Probe, base http.RoundTripper) *Discovery {
-	return New(ctx, slog.New(slog.DiscardHandler), newService(stub), probe, base)
+	d := New(ctx, slog.New(slog.DiscardHandler), newService(stub), base)
+	d.probe = probe
+
+	return d
 }
 
 // newUpstream builds the upstream for method on stub, probing with probe and
@@ -373,7 +376,10 @@ func discoverStream(sendErr error, failAfter int, candidates ...string) *transpo
 func newStubbedUpstream(ctx context.Context, tp connect.Transport) *Upstream {
 	service := grpcdconnect.NewGRPCDServiceClient(connect.NewClient(tp))
 
-	return New(ctx, slog.New(slog.DiscardHandler), service, probeStub(), newBaseStub()).upstream(method)
+	d := New(ctx, slog.New(slog.DiscardHandler), service, newBaseStub())
+	d.probe = probeStub()
+
+	return d.upstream(method)
 }
 
 // await blocks until signal fires, failing the test if the test's own

@@ -11,14 +11,27 @@ import (
 	"github.com/pbrpc/otel-testing/mocks/tracer"
 	"github.com/pbrpc/testing/mocks/roundtripper"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/grpcd/protos/grpcdconnect"
 )
 
 func TestNew(t *testing.T) {
-	t.Run("substitutes a logger and a probe when given none", func(t *testing.T) {
-		d := New(t.Context(), nil, newService(&grpcdStub{}), probeStub(), newBaseStub())
+	t.Run("substitutes a logger when given none", func(t *testing.T) {
+		d := New(t.Context(), nil, newService(&grpcdStub{}), newBaseStub())
 
 		if d.log == nil {
 			t.Fatal("expected a logger")
+		}
+	})
+
+	t.Run("probes over the base transport", func(t *testing.T) {
+		d := New(t.Context(), nil, newService(&grpcdStub{}), mounted())
+
+		if err := d.probe(t.Context(), grpcdconnect.GRPCDServiceDiscoverProcedure, "10.0.0.1:50051"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if err := d.probe(t.Context(), method, "10.0.0.1:50051"); err == nil {
+			t.Fatal("expected the unmounted method to fail")
 		}
 	})
 }

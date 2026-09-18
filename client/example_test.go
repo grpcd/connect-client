@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -70,6 +71,7 @@ func Example() {
 	svcCfg := svc.Configuration{Name: "example"}
 	err := env.Parse(&svcCfg)
 	if err != nil {
+		slog.Default().Error("Failed to read configuration", slog.Any("error", err))
 		return
 	}
 
@@ -104,6 +106,10 @@ func Example() {
 	// health check. With the variable unset there is nothing to register with
 	// and nothing to discover through, and the server serves anyway.
 	configured, err := env.ParseAs[client.Configuration]()
+	if err != nil {
+		return
+	}
+
 	base, err := transport.From(nil)
 	if err != nil {
 		return
@@ -114,14 +120,16 @@ func Example() {
 		// grpcd's own health, asked over that connection.
 		checks[grpcdclient.CheckName] = grpcdclient.Check(conn)
 
-		// One Discovery per process. Held() is the transport under every
+		// One Discovery per process, over the instrumented transport: the
+		// client span for a request opens once its replica is known, so it
+		// names where the request went. Held() is the transport under every
 		// client to a discovered dependency: a request to a grpcd:/// URL is
 		// routed by its procedure to the replica held for it, discovered on
 		// first use and watched from then on; any other URL goes over the
-		// standard transport as it is.
-		discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)
+		// transport as it is.
+		discovery := discover.New(serveCtx, log, conn, pbrpcotel.NewTransport(base))
 
-		httpClient := pbrpcotel.NewHTTPClient(discovery.Held())
+		httpClient := &http.Client{Transport: discovery.Held()}
 
 		// Every generated client is built against the same base URL and calls
 		// the same URL for the life of the process while the replicas behind

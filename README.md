@@ -94,10 +94,15 @@ both `http.RoundTripper`s:
   A service reaches its dependencies through it:
 
 ```go
-discovery := discover.New(serveCtx, log, conn, discover.NewProbe(nil), nil)
-httpClient := foundationclient.NewHTTPClient(discovery.Held())
-upstream := upstreamconnect.NewUpstreamServiceClient(foundationclient.New(httpClient, discover.BaseURL, nil))
+discovery := discover.New(serveCtx, log, conn, otel.NewTransport(base))
+httpClient := &http.Client{Transport: discovery.Held()}
+upstream := upstreamconnect.NewUpstreamServiceClient(connectclient.New(httpClient, discover.BaseURL, nil))
 ```
+
+The transport handed to `discover.New` carries every request once its host is
+known, the candidate probes included, and the instrumentation goes on it: a
+client span opens after resolution and names the replica the request went to,
+rather than `grpcd:///`.
 
 A held replica that stops answering at the transport is dropped; the next
 request resolves again, and one whose body can be sent again is sent to the
