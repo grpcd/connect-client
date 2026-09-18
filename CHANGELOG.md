@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.8.3 - 2026-09-18
+#### Bug Fixes
+- update connect-service - (3fa79b1) - Nathan Blair
+
+- - -
+
 ## 0.8.2 - 2026-09-18
 #### Bug Fixes
 - also log when registering - (2034d17) - Nathan Blair
