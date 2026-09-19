@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.9.0 - 2026-09-19
+#### Features
+- expose Upstream.Hold - (b3c73d7) - Nathan Blair
+
+- - -
+
 ## 0.8.3 - 2026-09-18
 #### Bug Fixes
 - update connect-service - (3fa79b1) - Nathan Blair
