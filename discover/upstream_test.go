@@ -1,3 +1,4 @@
+//revive:disable:package-comments
 package discover
 
 import (
@@ -180,6 +181,181 @@ func TestResolve(t *testing.T) {
 		}
 		if got := u.Address(); got != "" {
 			t.Errorf("address = %q, want none", got)
+		}
+	})
+}
+
+// settled blocks until the resolution in progress, if any, has set the
+// address, so a test reads what a holder held. Resolve runs under the
+// resolving lock and is a no-op once an address is held.
+func settled(t *testing.T, u *Upstream) {
+	t.Helper()
+
+	if err := u.Resolve(t.Context()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestHold(t *testing.T) {
+	t.Run("holds the replica and holds another when it is dropped", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		stub := &grpcdStub{
+			scripts:        []discoverScript{{candidates: []string{replicaA}}, {candidates: []string{replicaB}}},
+			discoverOpened: make(chan struct{}, 1),
+			watchOpened:    make(chan struct{}, 4),
+		}
+		base := newBaseStub(replicaA)
+		u := newUpstream(ctx, stub, probeStub(), base)
+
+		go u.Hold(ctx)
+
+		await(t, stub.discoverOpened, "the holder never resolved")
+		await(t, stub.watchOpened, "the first replica was never watched")
+		settled(t, u)
+
+		if got := u.Address(); got != replicaA {
+			t.Errorf("address = %q, want %q held", got, replicaA)
+		}
+
+		// A request the replica does not answer drops it. This one cannot be
+		// sent again, so the request resolves nothing: the holder does.
+		if _, err := u.RoundTrip(newCall(t.Context(), t, nil)); !errors.Is(err, errUnreachable) {
+			t.Fatalf("error = %v, want %v", err, errUnreachable)
+		}
+
+		await(t, stub.discoverOpened, "the holder never resolved again after the drop")
+		await(t, stub.watchOpened, "the next replica was never watched")
+		settled(t, u)
+
+		if got := u.Address(); got != replicaB {
+			t.Errorf("address = %q, want %q held", got, replicaB)
+		}
+		if stub.discoveries() != 2 {
+			t.Errorf("discoveries = %d, want one per hold", stub.discoveries())
+		}
+		if sent := base.sentTo(); !slices.Equal(sent, []string{replicaA}) {
+			t.Errorf("sent to %v, want the one attempt that dropped the replica", sent)
+		}
+	})
+
+	t.Run("asks again when a resolution fails", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		stub := &grpcdStub{
+			scripts:     []discoverScript{{end: errors.New("nothing")}, {candidates: []string{replicaA}}},
+			watchOpened: make(chan struct{}, 4),
+		}
+		u := newUpstream(ctx, stub, probeStub(), newBaseStub())
+
+		go u.Hold(ctx)
+
+		await(t, stub.watchOpened, "the replica was never watched")
+		settled(t, u)
+
+		if got := u.Address(); got != replicaA {
+			t.Errorf("address = %q, want %q held", got, replicaA)
+		}
+		if stub.discoveries() != 2 {
+			t.Errorf("discoveries = %d, want the failed one and the one that held", stub.discoveries())
+		}
+	})
+
+	t.Run("keeps holding through a move and resolves again when the address moved to is dropped", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		stub := &grpcdStub{
+			scripts:     offers(replicaA),
+			moves:       make(chan string),
+			watchOpened: make(chan struct{}, 4),
+			watchEnded:  make(chan struct{}, 4),
+		}
+		base := newBaseStub(replicaB)
+		u := newUpstream(ctx, stub, probeStub(), base)
+
+		go u.Hold(ctx)
+
+		await(t, stub.watchOpened, "the first replica was never watched")
+		settled(t, u)
+
+		stub.moves <- replicaB
+
+		await(t, stub.watchOpened, "the watch on the new address never opened")
+		await(t, stub.watchEnded, "the watch on the old address never ended")
+
+		if got := u.Address(); got != replicaB {
+			t.Errorf("address = %q, want %q moved to", got, replicaB)
+		}
+		if stub.discoveries() != 1 {
+			t.Errorf("discoveries = %d, want the move to have resolved nothing", stub.discoveries())
+		}
+
+		if _, err := u.RoundTrip(newCall(t.Context(), t, nil)); !errors.Is(err, errUnreachable) {
+			t.Fatalf("error = %v, want %v", err, errUnreachable)
+		}
+
+		await(t, stub.watchOpened, "the holder never watched a replica after the drop")
+		settled(t, u)
+
+		if got := u.Address(); got != replicaA {
+			t.Errorf("address = %q, want %q held again", got, replicaA)
+		}
+		if stub.discoveries() != 2 {
+			t.Errorf("discoveries = %d, want one more after the drop", stub.discoveries())
+		}
+	})
+
+	t.Run("returns when its context ends and leaves the address held", func(t *testing.T) {
+		holdCtx, end := context.WithCancel(t.Context())
+		defer end()
+
+		stub := &grpcdStub{scripts: offers(replicaA), watchOpened: make(chan struct{}, 4)}
+		u := newUpstream(t.Context(), stub, probeStub(), newBaseStub())
+
+		returned := make(chan struct{})
+		go func() {
+			u.Hold(holdCtx)
+			close(returned)
+		}()
+
+		await(t, stub.watchOpened, "the replica was never watched")
+		settled(t, u)
+
+		end()
+
+		await(t, returned, "Hold never returned")
+
+		if got := u.Address(); got != replicaA {
+			t.Errorf("address = %q, want %q still held", got, replicaA)
+		}
+	})
+
+	t.Run("returns when its context ends while resolving", func(t *testing.T) {
+		holdCtx, end := context.WithCancel(t.Context())
+		defer end()
+
+		// Nothing serves the method and the holder waits, so the resolution
+		// is in progress until the context ends it.
+		stub := &grpcdStub{scripts: offers(), discoverOpened: make(chan struct{}, 1)}
+		u := newUpstream(t.Context(), stub, probeStub(), newBaseStub())
+
+		returned := make(chan struct{})
+		go func() {
+			u.Hold(holdCtx)
+			close(returned)
+		}()
+
+		await(t, stub.discoverOpened, "the resolution never started")
+
+		end()
+
+		await(t, returned, "Hold never returned")
+
+		if got := u.Address(); got != "" {
+			t.Errorf("address = %q, want none held", got)
 		}
 	})
 }

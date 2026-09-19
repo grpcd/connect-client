@@ -105,8 +105,9 @@ client span opens after resolution and names the replica the request went to,
 rather than `grpcd:///`.
 
 A held replica that stops answering at the transport is dropped; the next
-request resolves again, and one whose body can be sent again is sent to the
-new replica without the caller seeing the change. A request to any other URL
+request, or a `Hold` on the method, resolves again, and a request whose body
+can be sent again is sent to the new replica without the caller seeing the
+change. A request to any other URL
 goes over the standard transport untouched through either transport, so the
 same client reaches a fixed `http://host:port` too. The application holds
 plain clients and never sees an address.
@@ -122,6 +123,45 @@ fails the probe is a no-op.
 `discovery.Upstream(url)` names one held method: its `Address()` is what
 diagnostics report, and `Resolve(ctx)` holds it before the first request, for
 a process that wants a method's `Discover` and `Watch` open from startup.
+`Resolve` is one attempt; `Hold(ctx)` keeps holding for as long as `ctx`
+lives, resolving again when a resolution fails and whenever the replica held
+is dropped, so a dependency that could not be reached when the process
+started is reached once it can be, whether or not a request arrives to ask.
+A service runs it on its own goroutine, the way it runs its registration:
+
+```go
+upstream, err := discovery.Upstream(discover.URL(upstreamconnect.UpstreamServiceMethodProcedure))
+...
+go upstream.Hold(serveCtx)
+```
+
+`Hold` holds no timer of its own; see Waiting.
+
+### Waiting
+
+The client has three loops that reopen a stream when it ends: `Register`,
+`Hold`, and the watcher under every held method. None of them waits on its
+own, and none is to be given a backoff. Every wait in the client is one of
+two, each at the layer that can see what is being waited for:
+
+- **A grpcd that cannot be reached** is the ready transport's. A dial that
+  fails puts the host on its schedule, and the next attempt on that host waits
+  for it. This is the only timer the client has, and it lives under the
+  connection, not in any loop.
+- **A grpcd that cannot answer yet** is grpcd's. It holds the stream rather
+  than failing it: a `Discover` for a method nothing serves is held until
+  something registers, and a `Register`, `Discover`, or `Watch` that meets a
+  lost storage backend is held until the backend returns, when the
+  registration is written, the lookup draws again, and the watch resumes
+  ([grpcd server: Losing the storage
+  backend](https://github.com/grpcd/server#losing-the-storage-backend)). The
+  loop is blocked in `Receive` for the duration and continues on the event.
+
+A stream a reachable grpcd ends with an error is therefore a fault in one
+side or the other, not a state to pace, and the loop reopens it at once. An
+instance that stops answering altogether is found by the HTTP/2 ping timeout
+on the connection, which breaks it; the next dial then either lands on
+another instance or fails, and a failed dial is the first case.
 
 ### Reporting Dependencies
 

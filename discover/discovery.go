@@ -16,6 +16,7 @@ import (
 
 	"git.sonicoriginal.software/logger"
 
+	grpcd "github.com/grpcd/protos"
 	"github.com/grpcd/protos/grpcdconnect"
 )
 
@@ -202,4 +203,108 @@ func isProcedure(path string) bool {
 	service, method, found := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 
 	return strings.HasPrefix(path, "/") && found && service != "" && method != "" && !strings.Contains(method, "/")
+}
+
+// resolve works one Discover stream for method: it takes the first candidate
+// that probes reachable, reports each that does not, and answers with the
+// address. accept, when given, runs on the candidate before the stream is
+// closed and may refuse it with an error, which ends the resolution; a holder
+// opens its Watch there, so no registration falls between the two.
+//
+// wait is whether grpcd holds the stream for a registration when nothing
+// serves the method. A holder waits: the dependency is the caller's to have.
+// A resolution for one request does not, and gets NotFound at once.
+//
+// The stream runs under the process context, ended early when the caller's
+// ends, so a caller that gave up does not leave a resolution running and a
+// resolution in progress is not tied to the request that started it. It runs
+// under the caller's trace, so the lookup and grpcd's side of it are part of
+// the request that needed it. Closing the stream is how grpcd is told the
+// candidate worked.
+func (d *Discovery) resolve(
+	ctx context.Context, method string, wait bool, accept func(ctx context.Context, address string) error,
+) (string, error) {
+	askCtx, cancel := context.WithCancel(d.ctx)
+	defer cancel()
+
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+
+	askCtx = trace.ContextWithSpanContext(askCtx, trace.SpanContextFromContext(ctx))
+
+	askCtx, span := d.tracer.Start(askCtx, "discover")
+	defer span.End()
+
+	log := d.log.With(slog.String("method", method))
+
+	stream, err := d.service.Discover(askCtx)
+	if err != nil {
+		log.ErrorContext(askCtx, "Failed to open discovery", slog.Any("error", err))
+
+		return "", err
+	}
+	defer stream.Close()
+
+	request := &grpcd.DiscoverRequest{
+		Step:   &grpcd.DiscoverRequest_MethodName{MethodName: method},
+		NoWait: !wait,
+	}
+
+	if err = stream.Send(request); err != nil {
+		log.ErrorContext(askCtx, "Failed to ask for the method", slog.Any("error", err))
+
+		return "", err
+	}
+
+	log.DebugContext(askCtx, "Discovering method", slog.Bool("wait", wait))
+
+	for {
+		response, err := stream.Receive()
+		if err != nil {
+			log.ErrorContext(askCtx, "Discovery ended without an address", slog.Any("error", err))
+
+			return "", err
+		}
+
+		address := response.GetAddress()
+
+		if err = d.probe(askCtx, method, address); err != nil {
+			log.InfoContext(askCtx, "Candidate unreachable, reporting it dead",
+				slog.String("address", address), slog.Any("error", err))
+
+			dead := &grpcd.DiscoverRequest{
+				Step: &grpcd.DiscoverRequest_DeadAddress{DeadAddress: address},
+			}
+
+			if err = stream.Send(dead); err != nil {
+				log.ErrorContext(askCtx, "Failed to report the candidate dead", slog.Any("error", err))
+
+				return "", err
+			}
+
+			continue
+		}
+
+		if accept != nil {
+			if err = accept(askCtx, address); err != nil {
+				return "", err
+			}
+		}
+
+		// grpcd takes the close as the verdict and ends the stream once it has
+		// read it. That end is waited for: a stream torn down before then
+		// reaches grpcd as a cancellation, and the verdict with it. The address
+		// is resolved either way.
+		if err = stream.CloseSend(); err == nil {
+			_, err = stream.Receive()
+		}
+
+		if !errors.Is(err, io.EOF) {
+			log.WarnContext(askCtx, "Verdict may not have reached grpcd", slog.Any("error", err))
+		}
+
+		log.InfoContext(askCtx, "Discovered", slog.String("address", address))
+
+		return address, nil
+	}
 }
